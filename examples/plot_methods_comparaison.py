@@ -22,7 +22,7 @@ sys.path.append("../")  # To add location of the library, remove when installed
 import VolterraBasis as vb
 import VolterraBasis.basis as bf
 
-trj = np.loadtxt("example_gle.trj")
+trj = np.loadtxt("example_lj.trj")
 xva_list = []
 print(trj.shape)
 for i in range(1, trj.shape[1]):
@@ -31,9 +31,8 @@ for i in range(1, trj.shape[1]):
     xva_list.append(xvaf)
 
 
-# Nsplines = 4
-# mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), Nsplines, trunc=10, kT=1.0, with_const=True, saveall=False)
-mymem = vb.Pos_gle(xva_list, bf.LinearFeatures(), 1, trunc=10.0, kT=1.0, with_const=False, saveall=False)
+Nsplines = 10
+mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), Nsplines, trunc=10, kT=1.0, with_const=True, saveall=False)
 mymem.compute_mean_force()
 harmonic_coeffs = -1 * mymem.force_coeff[0]
 # print(mymem.force_coeff)
@@ -49,7 +48,7 @@ axs.set_title("Memory kernel")
 axs.set_xscale("log")
 axs.set_xlabel("$t$")
 axs.set_ylabel("$K(x=2.0,t)$")
-axs.set_ylim([-2000, 2000])
+axs.set_ylim([-500, 2000])
 axs.grid()
 # Iterate over method for comparaison
 for method in ["rectangular", "midpoint", "midpoint_w_richardson", "trapz", "second_kind"]:

@@ -19,7 +19,7 @@ sys.path.append("../")  # To add location of the library, remove when installed
 import VolterraBasis as vb
 import VolterraBasis.basis as bf
 
-trj = np.loadtxt("example_gle.trj")
+trj = np.loadtxt("example_lj.trj")
 xva_list = []
 print(trj.shape)
 for i in range(1, trj.shape[1]):
@@ -27,7 +27,8 @@ for i in range(1, trj.shape[1]):
     xvaf = vb.compute_va(xf, correct_jumps=True)
     xva_list.append(xvaf)
 
-mymem = vb.Pos_gle(xva_list, bf.LinearFeatures(), 1, trunc=10.0, kT=1.0, with_const=False, saveall=False)
+Nsplines = 10
+mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), Nsplines, trunc=10, kT=1.0, with_const=True, saveall=False)
 mymem.compute_mean_force()
 print(mymem.force_coeff)
 mymem.compute_corrs()
