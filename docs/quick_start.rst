@@ -26,7 +26,7 @@ Force and memory estimate
 -------------------------
 
 
-Once the mean force and memory have been computed, the value of the force and memory kernel at given position can be compued trought function :function:`VolterraBasis.Pos_gle.dU` and :function:`VolterraBasis.Pos_gle.kernel_eval`
+Once the mean force and memory have been computed, the value of the force and memory kernel at given position can be computed trought function :meth:`VolterraBasis.Pos_gle.dU` and :meth:`VolterraBasis.Pos_gle.kernel_eval`
 
 Choice of the form of the GLE
 -----------------------------

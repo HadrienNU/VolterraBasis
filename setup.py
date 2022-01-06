@@ -3,7 +3,7 @@
 import os
 import setuptools
 
-from distutils.core import setup, Extension
+from numpy.distutils.core import setup, Extension
 
 DISTNAME = "VolterraBasis"
 DESCRIPTION = "Python module for the extraction of position dependant memory kernels from time series"

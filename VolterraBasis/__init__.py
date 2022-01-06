@@ -8,6 +8,7 @@ from . import basis
 
 __all__ = ["Pos_gle", "Pos_gle_with_friction", "Pos_gle_no_vel_basis", "Pos_gle_overdamped", "correlation"]
 
+__version__ ="1.0"
 
 def xframe(x, time, v=None, fix_time=False, round_time=1.0e-4, dt=-1):
     """

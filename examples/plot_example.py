@@ -1,6 +1,14 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
+"""
+===========================
+Kernel Estimation
+===========================
+
+How to run kernel estimation
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -32,7 +40,7 @@ force = mymem.dU(xfa)
 
 
 # Compute noise
-time_noise, noise_reconstructed, _, _, _ = mymem.compute_noise(xva_list[0], trunc_kernel=2000)
+time_noise, noise_reconstructed, _, _, _ = mymem.compute_noise(xva_list[0], trunc_kernel=200)
 
 
 fig_kernel, axs = plt.subplots(1, 3)
