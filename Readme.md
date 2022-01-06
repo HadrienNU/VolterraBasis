@@ -9,4 +9,16 @@ Run
     pip install .
 
 to install, and see `examples/` to get started.
-Also have a look at the documentation.
+
+To compile the documentation
+
+.. code-block:: sh
+
+  cd doc/
+  make html
+
+And the documentation will be available in
+
+.. code-block:: sh
+
+  doc/_build/html/index.html
