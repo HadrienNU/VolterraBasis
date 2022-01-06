@@ -12,13 +12,11 @@ to install, and see `examples/` to get started.
 
 To compile the documentation
 
-.. code-block:: sh
 
-  cd doc/
-  make html
+    cd doc/
+    make html
 
 And the documentation will be available in
 
-.. code-block:: sh
 
-  doc/_build/html/index.html
+    doc/_build/html/index.html
