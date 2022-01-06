@@ -28,6 +28,20 @@ Basis Features
    :toctree: generated/
    :template: class.rst
 
-   VolterraBasis.basis
+   VolterraBasis.basis.LinearFeatures
+   
+   VolterraBasis.basis.PolynomialFeatures
+
+   VolterraBasis.basis.BSplineFeatures
+   
+   VolterraBasis.basis.SplineFctFeatures
+   
+   VolterraBasis.basis.SplineFctWithLinFeatures
+   
+   VolterraBasis.basis.BinsFeatures
+   
+   VolterraBasis.basis.FEM1DFeatures
+   
+   
 
 

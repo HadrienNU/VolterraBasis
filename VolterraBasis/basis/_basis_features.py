@@ -46,6 +46,10 @@ def _get_bspline_basis(knots, degree=3, periodic=False):
 
 
 class BSplineFeatures(TransformerMixin):
+    """
+    B splines Features
+    """
+
     def __init__(self, n_knots=5, degree=3, periodic=False):
         self.periodic = periodic
         self.degree = degree
@@ -91,7 +95,7 @@ class BSplineFeatures(TransformerMixin):
 
 class SplineFctFeatures(TransformerMixin):
     """
-    Using fit of free energy as basis
+    A single basis function that is given from splines fit of data
     """
 
     def __init__(self, knots, coeffs, k=3, periodic=False):
@@ -120,7 +124,7 @@ class SplineFctFeatures(TransformerMixin):
 
 class SplineFctWithLinFeatures(TransformerMixin):
     """
-    Using fit of free energy as basis
+    Combine a basis function that is given from splines fit of data with linear function
     """
 
     def __init__(self, knots, coeffs, k=3, periodic=False):
@@ -151,6 +155,10 @@ class SplineFctWithLinFeatures(TransformerMixin):
 
 
 class BinsFeatures(KBinsDiscretizer):
+    """
+    Use histogram bins as basis functions
+    """
+
     def __init__(self, n_bins_arg="auto", strategy="uniform"):
         """
         Init class
@@ -218,6 +226,10 @@ class LinearElement(object):
 
 
 class FEM1DFeatures(TransformerMixin):
+    """
+    Use simple linear finite element as basis function
+    """
+
     def __init__(self, mesh, periodic=False):
         self.periodic = periodic
         # Add two point for start and end point
@@ -252,6 +264,10 @@ class FEM1DFeatures(TransformerMixin):
 
 
 class LinearFeatures(TransformerMixin):
+    """
+    Linear function
+    """
+
     def __init__(self, to_center=False):
         """"""
         self.centered = to_center
