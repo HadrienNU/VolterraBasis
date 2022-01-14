@@ -27,7 +27,7 @@ xva_list = []
 print(trj.shape)
 for i in range(1, trj.shape[1]):
     xf = vb.xframe(trj[:, i], trj[:, 0])
-    xvaf = vb.compute_va(xf, correct_jumps=True)
+    xvaf = vb.compute_va(xf)
     xva_list.append(xvaf)
 
 
@@ -52,10 +52,9 @@ axs.set_ylim([-500, 2000])
 axs.grid()
 # Iterate over method for comparaison
 for method in ["rectangular", "midpoint", "midpoint_w_richardson", "trapz", "second_kind"]:
-    print(method)
     mymem.compute_kernel(method=method)
     time_ker, kernel_vb = mymem.kernel_eval([2.0])
-    axs.plot(time_ker, kernel_vb, "-o", label=method)
+    axs.plot(time_ker, kernel_vb[:, :, 0], "-o", label=method)
 axs.legend(loc="best")
 
 plt.show()
