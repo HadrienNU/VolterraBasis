@@ -26,6 +26,8 @@ class Pos_gle_base(object):
                 This class should implement, basis() and deriv() function
                 and deal with periodicity of the data.
                 If a fit() method is defined, it will be called at initialization
+        N_basis_elt: int.
+                Number of element in the basis. In case of multidimensionnal basis, that should count all elements.
         saveall : bool, default=True
             Whether to save all output functions.
         prefix : str
@@ -111,7 +113,7 @@ class Pos_gle_base(object):
     def basis_vector(self, xva, compute_for="corrs"):
         """
         From one trajectory compute the basis element.
-        To be implemented by the infant classes
+        To be implemented by the children classes
         """
         raise NotImplementedError
 
@@ -130,6 +132,9 @@ class Pos_gle_base(object):
         return self.kT * avg_gram
 
     def compute_effective_masse(self):  # TODO
+        """
+        Return effective mass matrix computed from equipartition with the velocity.
+        """
         if self.verbose:
             print("Calculate effective mass...")
             print("Use kT:", self.kT)
@@ -145,7 +150,7 @@ class Pos_gle_base(object):
 
     def compute_mean_force(self):
         """
-        Computes the mean force from the trajectory.
+        Computes the mean force from the trajectories.
         """
         if self.verbose:
             print("Calculate mean force...")
@@ -220,8 +225,8 @@ class Pos_gle_base(object):
         method : {"rectangular", "midpoint", "midpoint_w_richardson","trapz","second_kind"}, default=rectangular
             Choose numerical method of inversion of the volterra equation
         k0 : float, default=0.
-            If you give a nonzero value for k0, this is used at time zero for the trapz and second kind method, if set to None,
-            the F-routine will calculate k0 from the second order memory equation.
+            If you give a nonzero value for k0, this is used at time zero for the trapz and second kind method. If set to None,
+            the F-routine will calculate k0 from the second kind memory equation.
         """
         if self.bkbkcorrw is None or self.bkdxcorrw is None:
             raise Exception("Need correlation functions to compute the kernel.")
@@ -318,6 +323,9 @@ class Pos_gle(Pos_gle_base):
                 This class should implement, basis() and deriv() function
                 and deal with periodicity of the data.
                 If a fit() method is defined, it will be called at initialization
+        N_basis_elt: int.
+                Number of element in the basis. In case of multidimensionnal basis, that should count all elements.
+                If with_const is True, this number should count the constant function.
         saveall : bool, default=True
             Whether to save all output functions.
         prefix : str
@@ -360,7 +368,16 @@ class Pos_gle(Pos_gle_base):
 
     def compute_noise(self, xva, trunc_kernel=None):
         """
-        From a trajectory get the noise
+        From a trajectory get the noise.
+
+        Parameters
+        ----------
+        xva : xarray dataset (['time', 'x', 'v', 'a']) .
+            Use compute_va() or see its output for format details.
+            Input trajectory to compute noise.
+        trunc_kernel : int
+                Number of datapoint of the kernel to consider.
+                Can be used to remove unphysical divergence of the kernel or shortten execution time.
         """
         if self.force_coeff is None:
             raise Exception("Mean force has not been computed.")

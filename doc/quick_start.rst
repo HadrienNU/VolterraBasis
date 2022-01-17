@@ -9,7 +9,8 @@ Inversion of Volterra Integral Equations
 
 
 
-Several algorithms for the inversion of the Volterra Integral Equations are available. Please refer to Linz for mathematical details.
+Several algorithms for the inversion of the Volterra Integral Equations are available. Please refer to P. Linz, “Numerical methods for Volterra integral equations of the first kind”, The Computer
+Journal 12, 393–397 (1969) for mathematical details.
 
 Functionnal basis
 ------------------
@@ -19,7 +20,7 @@ The estimation of the memory kernel necessite the choice of a functionnal basis.
     >>> import VolterraBasis.basis as bf
     >>> basis=bf.BSplineFeatures(15)
 
-Several options are available for the type of basis, please refer to the documentation of  :class:`VolterraBasis.VolterraBasis`. 
+Several options are available for the type of basis, please refer to the documentation. Although multidimensionnal trajectories can be analysed, not all functionnal basis are multidimensionnal.
 
 
 Force and memory estimate
@@ -36,5 +37,3 @@ Several options are available to choose the form of the GLE:
 * :class:`VolterraBasis.Pos_gle_with_friction` is similar to the previous but don't assume that the instantaneous friction is zero.
 * :class:`VolterraBasis.Pos_gle_no_vel_basis`  implement a GLE where the memory kernel has no dependance in velocity.
 * :class:`VolterraBasis.Pos_gle_overdamped` compute the memory kernel for an overdamped dynamics.
-
-
