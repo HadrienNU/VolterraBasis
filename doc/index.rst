@@ -6,7 +6,7 @@
 Welcome to VolterraBasis's documentation!
 ============================================
 
-This project compute position-dependent memory kernel for Generalized Langevin Equations. Please refer to https://arxiv.org/abs/XXXX.XXXX for a detailed description of the algorithm.
+This project compute position-dependent memory kernel for Generalized Langevin Equations. Please refer to https://arxiv.org/abs/XXXX.XXXX for a detailed description of the algorithm.  
 
 
 .. toctree::
