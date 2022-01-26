@@ -1,12 +1,12 @@
 import numpy as np
 import xarray as xr
 
-from .pos_gle import Pos_gle, Pos_gle_with_friction, Pos_gle_no_vel_basis
+from .pos_gle import Pos_gle, Pos_gle_with_friction, Pos_gle_no_vel_basis, Pos_gle_const_kernel
 from .pos_gle_overdamped import Pos_gle_overdamped
 from .correlation import correlation1D as correlation
 from . import basis
 
-__all__ = ["Pos_gle", "Pos_gle_with_friction", "Pos_gle_no_vel_basis", "Pos_gle_overdamped", "correlation"]
+__all__ = ["Pos_gle", "Pos_gle_with_friction", "Pos_gle_no_vel_basis", "Pos_gle_const_kernel", "Pos_gle_overdamped", "correlation"]
 
 
 def xframe(x, time, v=None, fix_time=False, round_time=1.0e-4, dt=-1):

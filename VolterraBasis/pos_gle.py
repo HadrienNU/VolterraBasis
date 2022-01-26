@@ -481,3 +481,32 @@ class Pos_gle_no_vel_basis(Pos_gle_base):
             return E, E, dE
         else:
             raise ValueError("Basis evaluation goal not specified")
+
+
+class Pos_gle_const_kernel(Pos_gle_base):
+    """
+    A derived class in which we the kernel is set independant of the position
+    """
+
+    def __init__(self, xva_arg, basis, N_basis_elt, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
+        Pos_gle_base.__init__(self, xva_arg, basis, N_basis_elt, saveall, prefix, verbose, kT, trunc)
+        self.N_basis_elt = N_basis_elt
+        self.N_basis_elt_force = self.N_basis_elt
+        self.N_basis_elt_kernel = 1
+
+    def basis_vector(self, xva, compute_for="corrs"):
+        """
+        From one trajectory compute the basis element.
+        """
+        # We have to deal with the multidimensionnal case as well
+        bk = self.basis.basis(xva["x"].data)
+        # if self.include_const:
+        #     bk = np.concatenate((np.ones((bk.shape[0], 1)), bk), axis=1)
+        if compute_for == "force":
+            return bk
+        if compute_for == "kernel":  # For kernel evaluation
+            return np.ones_like(xva["x"].data)
+        elif compute_for == "corrs":
+            return bk, xva["v"].data, xva["a"].data
+        else:
+            raise ValueError("Basis evaluation goal not specified")
