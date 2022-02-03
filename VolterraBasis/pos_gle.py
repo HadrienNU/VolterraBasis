@@ -131,7 +131,7 @@ class Pos_gle_base(object):
             print("Found inverse gram:", self.invgram)
         return self.kT * avg_gram
 
-    def compute_effective_masse(self):  # TODO
+    def compute_effective_masse(self):
         """
         Return effective mass matrix computed from equipartition with the velocity.
         """
@@ -140,7 +140,7 @@ class Pos_gle_base(object):
             print("Use kT:", self.kT)
         v2sum = 0.0
         for i, xva in enumerate(self.xva_list):
-            v2sum += (xva["v"] ** 2).mean() * self.weights[i]  # TODO
+            v2sum += np.einsum("ik,ij->kj", xva["v"], xva["v"])
         v2 = v2sum / self.weightsum
         self.mass = self.kT * np.linalg.inv(v2)
 

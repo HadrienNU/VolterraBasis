@@ -11,11 +11,6 @@ How to run kernel estimation
 
 import numpy as np
 import matplotlib.pyplot as plt
-
-import sys
-
-sys.path.append("../")  # To add location of the library, remove when installed
-
 import VolterraBasis as vb
 import VolterraBasis.basis as bf
 
@@ -26,10 +21,6 @@ for i in range(1, trj.shape[1]):
     xf = vb.xframe(trj[:, i], trj[:, 0])
     xvaf = vb.compute_va(xf)
     xva_list.append(xvaf)
-
-# xf = vb.xframe(trj[:, 1:3], trj[:, 0])
-# xvaf = vb.compute_va(xf)
-# xva_list.append(xvaf)
 
 Nsplines = 10
 mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), Nsplines, trunc=10, kT=1.0, with_const=True, saveall=False)
