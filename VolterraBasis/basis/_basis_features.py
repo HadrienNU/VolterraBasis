@@ -8,260 +8,6 @@ import scipy.stats
 
 from sklearn.base import TransformerMixin
 
-from sklearn.preprocessing import KBinsDiscretizer
-from sklearn.neighbors import KDTree
-
-
-def freedman_diaconis(data):
-    """
-    Use Freedman Diaconis rule to compute optimal histogram bin number.
-
-    Parameters
-    ----------
-    data: np.ndarray
-        One-dimensional array.
-    """
-    data = np.asarray(data, dtype=np.float_)
-    IQR = scipy.stats.iqr(data, rng=(25, 75), scale=1.0, nan_policy="omit")
-    N = data.size
-    bw = (2 * IQR) / np.power(N, 1 / 3)
-
-    datmin, datmax = data.min(), data.max()
-    datrng = datmax - datmin
-    return int((datrng / bw) + 1)
-
-
-def _get_bspline_basis(knots, degree=3, periodic=False):
-    """Get spline coefficients for each basis spline."""
-    nknots = len(knots)
-    y_dummy = np.zeros(nknots)
-
-    knots, coeffs, degree = scipy.interpolate.splrep(knots, y_dummy, k=degree, per=periodic)
-    ncoeffs = len(coeffs)
-    bsplines = []
-    for ispline in range(nknots):
-        coeffs = [1.0 if ispl == ispline else 0.0 for ispl in range(ncoeffs)]
-        bsplines.append((knots, coeffs, degree))
-    return bsplines
-
-
-class BSplineFeatures(TransformerMixin):
-    """
-    B splines Features
-    """
-
-    def __init__(self, n_knots=5, degree=3, periodic=False):
-        self.periodic = periodic
-        self.degree = degree
-        self.n_knots = n_knots  # knots are position along the axis of the knots
-
-    def fit(self, X, y=None, knots=None):
-        # TODO determine position of knots given the datas
-        if knots is None:
-            knots = np.linspace(np.min(X), np.max(X), self.n_knots)
-        self.bsplines_ = _get_bspline_basis(knots, self.degree, periodic=self.periodic)
-        self.n_output_features_ = len(self.bsplines_)
-        return self
-
-    def basis(self, X):
-        nsamples, nfeatures = X.shape
-        features = np.zeros((nsamples, nfeatures * self.n_output_features_))
-        for ispline, spline in enumerate(self.bsplines_):
-            istart = ispline * nfeatures
-            iend = (ispline + 1) * nfeatures
-            features[:, istart:iend] = scipy.interpolate.splev(X, spline)
-        return features
-
-    def deriv(self, X, deriv_order=1, remove_const=False):
-        nsamples, nfeatures = X.shape
-        features = np.zeros((nsamples, nfeatures * self.n_output_features_))
-        for ispline, spline in enumerate(self.bsplines_):
-            istart = ispline * nfeatures
-            iend = (ispline + 1) * nfeatures
-            features[:, istart:iend] = scipy.interpolate.splev(X, spline, der=deriv_order)  # To check
-        if remove_const:
-            return features[:, :-1]  # Remove the last element
-            # proj = np.zeros((nfeatures * (self.n_output_features_ - 1), nfeatures * self.n_output_features_))
-            # # Find the correct projection
-            # # proj[:, :-1] = np.identity(nfeatures * (self.n_output_features_ - 1))
-            # # proj -= np.ones((nfeatures * (self.n_output_features_ - 1), nfeatures * self.n_output_features_)) / (nfeatures * self.n_output_features_)
-            # return np.matmul(features, proj.T)  # Do the projection on the image of the derivative
-        else:
-            return features
-
-    def hessian(self, X, remove_const=False):
-        return self.deriv(X, deriv_order=2, remove_const=remove_const)
-
-
-class SplineFctFeatures(TransformerMixin):
-    """
-    A single basis function that is given from splines fit of data
-    """
-
-    def __init__(self, knots, coeffs, k=3, periodic=False):
-        self.periodic = periodic
-        self.k = k
-        self.t = knots  # knots are position along the axis of the knots
-        self.c = coeffs
-
-    def fit(self, X, y=None):
-        self.spl = scipy.interpolate.BSpline(self.t, self.c, self.k)
-        self.n_output_features_ = 1
-        return self
-
-    def basis(self, X):
-        return self.spl(X)
-
-    def deriv(self, X, deriv_order=1, remove_const=False):
-        return self.spl.derivative(deriv_order)(X)
-
-    def hessian(self, X, remove_const=False):
-        return self.deriv(X, deriv_order=2, remove_const=remove_const)
-
-    def antiderivative(self, X, order=1):
-        return self.spl.antiderivative(order)(X)
-
-
-class SplineFctWithLinFeatures(TransformerMixin):
-    """
-    Combine a basis function that is given from splines fit of data with linear function
-    """
-
-    def __init__(self, knots, coeffs, k=3, periodic=False):
-        self.periodic = periodic
-        self.k = k
-        self.t = knots  # knots are position along the axis of the knots
-        self.c = coeffs
-
-    def fit(self, X, y=None):
-        self.spl = scipy.interpolate.BSpline(self.t, self.c, self.k)
-        return self
-
-    def basis(self, X):
-        return np.concatenate((X, self.spl(X)), axis=1)
-
-    def deriv(self, X, deriv_order=1, remove_const=False):
-        if deriv_order == 1:
-            lin_deriv = np.ones_like(X)
-        else:
-            lin_deriv = np.zeros_like(X)
-        return np.concatenate((lin_deriv, self.spl.derivative(deriv_order)(X)), axis=1)
-
-    def hessian(self, X, remove_const=False):
-        return self.deriv(X, deriv_order=2, remove_const=remove_const)
-
-    def antiderivative(self, X, order=1):
-        return self.spl.antiderivative(order)(X)
-
-
-class BinsFeatures(KBinsDiscretizer):
-    """
-    Use histogram bins as basis functions
-    """
-
-    def __init__(self, n_bins_arg="auto", strategy="uniform"):
-        """
-        Init class
-        """
-        super().__init__(encode="onehot-dense", strategy=strategy)
-        self.n_bins_arg = n_bins_arg
-
-    def fit(self, X, y=None):
-        """
-        Determine bin number
-        """
-        nsamples, dim_x = X.shape
-        if self.n_bins_arg == "auto":  # Automatique determination of the number of bins via maximum of sturges and freedman diaconis rules
-            # Sturges rules
-            self.n_bins = 1 + np.log2(nsamples)
-            for d in range(dim_x):
-                # Freedman–Diaconis rule
-                n_bins = max(self.n_bins, freedman_diaconis(X[:, d]))
-            self.n_bins = int(n_bins)
-        elif isinstance(self.n_bins_arg, int):
-            self.n_bins = self.n_bins_arg
-        else:
-            raise ValueError("The number of bins must be an integer")
-        super().fit(X, y)
-        self.n_output_features_ = self.n_bins
-        return self
-
-    def basis(self, X):
-        return self.transform(X)
-
-    def deriv(self, X, remove_const=False):
-        nsamples, nfeatures = X.shape
-        return np.zeros((nsamples, nfeatures * self.n_output_features_))
-
-    def hessian(self, X, remove_const=False):
-        nsamples, nfeatures = X.shape
-        return np.zeros((nsamples, nfeatures * self.n_output_features_))
-
-
-class LinearElement(object):
-    """1D element with linear basis functions.
-
-    Attributes:
-        index (int): Index of the element.
-        x_l (float): x-coordinate of the left boundary of the element.
-        x_r (float): x-coordinate of the right boundary of the element.
-    """
-
-    def __init__(self, index, x_left, x_center, x_right):
-        self.num_nodes = 2
-        self.index = index
-        self.x_left = x_left
-        self.x_center = x_center
-        self.x_right = x_right
-        self.center = np.asarray([0.5 * (self.x_right + self.x_left)])
-        self.size = 0.5 * (self.x_right - self.x_left)
-
-    def basis_function(self, x):
-        x = np.asarray(x)
-        return ((x >= self.x_left) & (x < self.x_center)) * (x - self.x_left) / (self.x_center - self.x_left) + ((x >= self.x_center) & (x < self.x_right)) * (self.x_right - x) / (self.x_right - self.x_center)
-
-    def deriv_function(self, x):
-        x = np.asarray(x)
-        return ((x >= self.x_left) & (x < self.x_center)) / (self.x_center - self.x_left) - ((x >= self.x_center) & (x < self.x_right)) / (self.x_right - self.x_center)
-
-
-class FEM1DFeatures(TransformerMixin):
-    """
-    Use simple linear finite element as basis function
-    """
-
-    def __init__(self, mesh, periodic=False):
-        self.periodic = periodic
-        # Add two point for start and end point
-        extra_point_start = 2 * mesh.x[0] - mesh.x[1]
-        extra_point_end = 2 * mesh.x[-1] - mesh.x[-2]
-        x_dat = np.concatenate((np.array([extra_point_start]), mesh.x, np.array([extra_point_end])))
-        # Create list of instances of Element
-        self.elements = [LinearElement(i, x_dat[i], x_dat[i + 1], x_dat[i + 2]) for i in range(len(x_dat) - 2)]
-        self.num_elements = len(self.elements)
-
-    def fit(self, X, y=None):
-        self.tree = KDTree(X)
-        return self
-
-    def basis(self, X):
-        nsamples, nfeatures = X.shape
-        features = np.zeros((nsamples, self.num_elements))
-        for k, element in enumerate(self.elements):
-            istart = k  # * nfeatures
-            iend = k + 1  # * nfeatures
-            features[:, istart:iend] = element.basis_function(X)
-        return features
-
-    def deriv(self, X, remove_const=False):
-        nsamples, nfeatures = X.shape
-        features = np.zeros((nsamples, self.num_elements))
-        for k, element in enumerate(self.elements):
-            istart = k  # * nfeatures
-            iend = k + 1  # * nfeatures
-            features[:, istart:iend] = element.deriv_function(X)
-        return features
-
 
 class LinearFeatures(TransformerMixin):
     """
@@ -283,11 +29,16 @@ class LinearFeatures(TransformerMixin):
     def basis(self, X):
         return X - self.mean_
 
-    def deriv(self, X, remove_const=True):
-        return np.ones_like(X)
+    def deriv(self, X, deriv_order=1, remove_const=True):
+        nsamples, dim = X.shape
+        grad = np.zeros((nsamples, dim) + (dim,) * deriv_order)
+        if deriv_order == 1:
+            for i in range(dim):
+                grad[:, i, i] = 1.0
+        return grad
 
     def hessian(self, X, remove_const=True):
-        return np.zeros_like(X)
+        return self.deriv(X, deriv_order=2, remove_const=remove_const)
 
 
 class PolynomialFeatures(TransformerMixin):
@@ -299,45 +50,154 @@ class PolynomialFeatures(TransformerMixin):
         self.degree = deg + 1
         self.polynom = polynom
 
+    def fit(self, X, y=None):
+        self.n_output_features_ = X.shape[1] * self.degree
+        return self
+
     def basis(self, X):
-        nsamples, nfeatures = X.shape
-        features = np.zeros((nsamples, nfeatures * self.degree))
+        nsamples, dim = X.shape
+        features = np.zeros((nsamples, dim * self.degree))
         for n in range(0, self.degree):
-            istart = n * nfeatures
-            iend = (n + 1) * nfeatures
+            istart = n * dim
+            iend = (n + 1) * dim
             features[:, istart:iend] = self.polynom.basis(n)(X)
         return features
 
     def deriv(self, X, deriv_order=1, remove_const=False):
-        nsamples, nfeatures = X.shape
+        nsamples, dim = X.shape
         with_const = int(remove_const)
-        features = np.zeros((nsamples, nfeatures * (self.degree - with_const)))
-        for n in range(with_const, self.degree):
-            istart = (n - with_const) * nfeatures
-            iend = (n + 1 - with_const) * nfeatures
-            features[:, istart:iend] = self.polynom.basis(n).deriv(deriv_order)(X)
+        features = np.zeros((nsamples, dim * (self.degree - with_const)) + (dim,) * deriv_order)
+        for n in range(self.degree - with_const):
+            istart = (n) * dim
+            iend = (n + 1) * dim
+            # print(self.polynom.basis(n).deriv(deriv_order)(X).shape)
+            # print(features.shape)
+            for i in range(dim):
+                features[(Ellipsis, slice(istart, iend)) + (i,) * deriv_order] = self.polynom.basis(n).deriv(deriv_order)(X[:, slice(i, i + 1)])
         return features
 
     def hessian(self, X, remove_const=False):
         return self.deriv(X, deriv_order=2, remove_const=remove_const)
 
 
+class SplineFctFeatures(TransformerMixin):
+    """
+    A single basis function that is given from splines fit of data
+    """
+
+    def __init__(self, knots, coeffs, k=3, periodic=False):
+        self.periodic = periodic
+        self.k = k
+        self.t = knots  # knots are position along the axis of the knots
+        self.c = coeffs
+
+    def fit(self, X, y=None):
+        nsamples, dim = X.shape
+        self.spl = scipy.interpolate.BSpline(self.t, self.c, self.k)
+        self.n_output_features_ = dim
+        return self
+
+    def basis(self, X):
+        return self.spl(X)
+
+    def deriv(self, X, deriv_order=1, remove_const=False):
+        nsamples, dim = X.shape
+        grad = np.zeros((nsamples, dim) + (dim,) * deriv_order)
+        for i in range(dim):
+            grad[(Ellipsis,) + (i,) * deriv_order] = self.spl.derivative(deriv_order)(X[:, slice(i, i + 1)])
+        return grad
+
+    def hessian(self, X, remove_const=False):
+        return self.deriv(X, deriv_order=2, remove_const=remove_const)
+
+    def antiderivative(self, X, order=1):
+        return self.spl.antiderivative(order)(X)
+
+
+class FeaturesCombiner(TransformerMixin):
+    def __init__(self, *basis):
+        self.basis_set = basis
+
+    def fit(self, X, y=None):
+        for b in self.basis_set:
+            b.fit(X)
+        self.n_output_features_ = np.sum([b.n_output_features_ for b in self.basis_set])
+        return self
+
+    def basis(self, X):
+        features = self.basis_set[0].basis(X)
+        for b in self.basis_set[1:]:
+            features = np.concatenate((features, b.basis(X)), axis=1)
+        return features
+
+    def deriv(self, X, deriv_order=1, remove_const=False):
+        grad = self.basis_set[0].deriv(X, deriv_order=deriv_order, remove_const=remove_const)
+        for b in self.basis_set[1:]:
+            print(grad.shape, b.deriv(X, deriv_order=deriv_order, remove_const=remove_const).shape)
+            features = np.concatenate((grad, b.deriv(X, deriv_order=deriv_order, remove_const=remove_const)), axis=1)
+        return features
+
+    def hessian(self, X, remove_const=False):
+        return self.deriv(X, deriv_order=2, remove_const=remove_const)
+
+
+# class SplineFctWithLinFeatures(TransformerMixin):
+#     """
+#     Combine a basis function that is given from splines fit of data with linear function
+#     """
+#
+#     def __init__(self, knots, coeffs, k=3, periodic=False):
+#         self.periodic = periodic
+#         self.k = k
+#         self.t = knots  # knots are position along the axis of the knots
+#         self.c = coeffs
+#
+#     def fit(self, X, y=None):
+#         nsamples, dim = X.shape
+#         self.spl = scipy.interpolate.BSpline(self.t, self.c, self.k)
+#         self.n_output_features_ = 2 * dim
+#         return self
+#
+#     def basis(self, X):
+#         return np.concatenate((X, self.spl(X)), axis=1)
+#
+#     def deriv(self, X, deriv_order=1, remove_const=False):
+#         if deriv_order == 1:
+#             lin_deriv = np.ones_like(X)
+#         else:
+#             lin_deriv = np.zeros_like(X)
+#         return np.concatenate((lin_deriv, self.spl.derivative(deriv_order)(X)), axis=1)
+#
+#     def hessian(self, X, remove_const=False):
+#         return self.deriv(X, deriv_order=2, remove_const=remove_const)
+#
+#     def antiderivative(self, X, order=1):
+#         return self.spl.antiderivative(order)(X)
+
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    import scipy.interpolate
+
+    x_range = np.linspace(-10, 10, 30).reshape(-1, 2)
+    b2 = LinearFeatures()
+    # basis = PolynomialFeatures(deg=3)
+    b1 = SplineFctFeatures(knots=np.linspace(-1, 1, 8), coeffs=np.logspace(1, 2, 8), k=2)
+    basis = FeaturesCombiner(b1, b2)
+    basis.fit(x_range)
+    print(x_range.shape)
+    print("Basis")
+    print(basis.basis(x_range).shape)
+    print("Deriv")
+    print(basis.deriv(x_range).shape)
+    print("Hessian")
+    print(basis.hessian(x_range).shape)
 
     # Plot basis
-    x_range = np.linspace(-10, 10, 15).reshape(-1, 1)
-    n_elems = 15
-    basis = BSplineFeatures(n_elems).fit(x_range)
-    print(basis.bsplines_[0][0])
-    print(len(basis.bsplines_[0][0]))
-    plt.plot(np.arange(n_elems + 4), basis.bsplines_[0][0])
-    c = scipy.interpolate.make_interp_spline(x_range[:, 0], x_range[:, 0], t=basis.bsplines_[0][0]).c
-    plt.plot(np.arange(n_elems), c, "-x")
-    print(c)
-    y = basis.deriv(x_range)
-    plt.plot(x_range[:, 0], c @ y.T)
-    # for n in range(y.shape[1]):
-    #     plt.plot(x_range[:, 0], y[:, n])
+    x_range = np.linspace(-2, 2, 50).reshape(-1, 1)
+    basis = basis.fit(x_range)
+    # basis = LinearFeatures().fit(x_range)
+    y = basis.basis(x_range)
+    plt.grid()
+    for n in range(y.shape[1]):
+        plt.plot(x_range[:, 0], y[:, n])
     plt.show()

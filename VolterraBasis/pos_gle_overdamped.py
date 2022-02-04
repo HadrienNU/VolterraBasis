@@ -13,9 +13,8 @@ class Pos_gle_overdamped(Pos_gle_base):
     holding all data and the extracted memory kernels.
     """
 
-    def __init__(self, xva_arg, basis, N_basis_elt, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
-        Pos_gle_base.__init__(self, xva_arg, basis, N_basis_elt, saveall, prefix, verbose, kT, trunc)
-        self.N_basis_elt = N_basis_elt
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
+        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt
 

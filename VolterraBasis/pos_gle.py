@@ -12,7 +12,7 @@ class Pos_gle_base(object):
     holding all data and the extracted memory kernels.
     """
 
-    def __init__(self, xva_arg, basis, N_basis_elt, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, **kwargs):
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, **kwargs):
         """
         Create an instance of the Pos_gle class.
 
@@ -26,8 +26,6 @@ class Pos_gle_base(object):
                 This class should implement, basis() and deriv() function
                 and deal with periodicity of the data.
                 If a fit() method is defined, it will be called at initialization
-        N_basis_elt: int.
-                Number of element in the basis. In case of multidimensionnal basis, that should count all elements.
         saveall : bool, default=True
             Whether to save all output functions.
         prefix : str
@@ -50,7 +48,7 @@ class Pos_gle_base(object):
         if callable(getattr(self.basis, "fit", None)):
             self.basis = self.basis.fit(np.concatenate([xva["x"].data for xva in self.xva_list], axis=0))  # Fit basis
 
-        self.N_basis_elt = N_basis_elt
+        self.N_basis_elt = self.basis.n_output_features_
         # self.N_zeros_kernel = self.N_basis_elt - self.N_basis_elt_force + int(with_const)
         self.saveall = saveall
         self.prefix = prefix
@@ -179,7 +177,10 @@ class Pos_gle_base(object):
 
         for weight, xva in zip(self.weights, self.xva_list):
             E_force, E, dE = self.basis_vector(xva)
+            print(E_force.shape, E.shape, dE.shape)
             force = np.matmul(E_force, self.force_coeff)
+            print(force.shape, xva["a"].data.shape)
+            print(self.bkdxcorrw.shape, correlation_ND(E, (xva["a"].data - force)).shape)
             if not large:
                 try:
                     self.bkdxcorrw += weight * correlation_ND(E, (xva["a"].data - force), trunc=self.trunc_ind)
@@ -291,16 +292,22 @@ class Pos_gle_base(object):
         return time - time[0], res_int
 
     def dU(self, x):
+        """
+        Evaluate the force at given points x
+        """
         if self.force_coeff is None:
             raise Exception("Mean force has not been computed.")
         E = self.basis_vector(xr.Dataset({"x": (["time", "dim_x"], np.asarray(x).reshape(-1, self.dim_x))}), compute_for="force")
-        return -1 * np.einsum("ik,kl->il", E, self.force_coeff)
+        return -1 * np.einsum("ik,kl->il", E, self.force_coeff)  # Return the force as array (nb of evalution point x dim_x)
 
     def kernel_eval(self, x):
+        """
+        Evaluate the kernel at given points x
+        """
         if self.kernel is None:
             raise Exception("Kernel has not been computed.")
         E = self.basis_vector(xr.Dataset({"x": (["time", "dim_x"], np.asarray(x).reshape(-1, self.dim_x))}), compute_for="kernel")
-        return self.time, np.einsum("jk,ikl->ijl", E, self.kernel)
+        return self.time, np.einsum("jkd,ikl->ijld", E, self.kernel)  # Return the kernal as array (time x nb of evalution point x dim_x x dim_x)
 
 
 class Pos_gle(Pos_gle_base):
@@ -309,7 +316,7 @@ class Pos_gle(Pos_gle_base):
     holding all data and the extracted memory kernels.
     """
 
-    def __init__(self, xva_arg, basis, N_basis_elt, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
         """
         Create an instance of the Pos_gle class.
 
@@ -323,9 +330,6 @@ class Pos_gle(Pos_gle_base):
                 This class should implement, basis() and deriv() function
                 and deal with periodicity of the data.
                 If a fit() method is defined, it will be called at initialization
-        N_basis_elt: int.
-                Number of element in the basis. In case of multidimensionnal basis, that should count all elements.
-                If with_const is True, this number should count the constant function.
         saveall : bool, default=True
             Whether to save all output functions.
         prefix : str
@@ -340,7 +344,7 @@ class Pos_gle(Pos_gle_base):
         with_const : bool, default=False
             Whatever the constant function is in the basis (to avoid inversion issue with the derivative).
         """
-        Pos_gle_base.__init__(self, xva_arg, basis, N_basis_elt, saveall, prefix, verbose, kT, trunc)
+        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt - int(with_const) * self.dim_x
         self.remove_const_ = bool(with_const)
@@ -360,8 +364,10 @@ class Pos_gle(Pos_gle_base):
             return dbk
         elif compute_for == "corrs":
             ddbk = self.basis.hessian(xva["x"].data, remove_const=self.remove_const_)
-            E = np.multiply(dbk, xva["v"].data)
-            dE = np.multiply(dbk, xva["a"].data) + np.multiply(ddbk, np.power(xva["v"].data, 2))
+            E = np.einsum("nld,nd->nl", dbk, xva["v"].data)
+            # E = np.multiply(dbk, xva["v"].data)
+            dE = np.einsum("nld,nd->nl", dbk, xva["a"].data) + np.einsum("nlcd,nc,nd->nl", ddbk, xva["v"].data, xva["v"].data)
+            # dE = np.multiply(dbk, xva["a"].data) + np.multiply(ddbk, np.power(xva["v"].data, 2))
             return bk, E, dE
         else:
             raise ValueError("Basis evaluation goal not specified")
@@ -411,9 +417,8 @@ class Pos_gle_with_friction(Pos_gle_base):
     A derived class in which we don't enforce zero friction
     """
 
-    def __init__(self, xva_arg, basis, N_basis_elt, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
-        Pos_gle.__init__(self, xva_arg, basis, N_basis_elt, saveall, prefix, verbose, kT, trunc)
-        self.N_basis_elt = N_basis_elt
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
+        Pos_gle.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
         self.N_basis_elt_force = 2 * self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt - int(with_const) * self.dim_x
         self.remove_const_ = bool(with_const)
@@ -461,9 +466,8 @@ class Pos_gle_no_vel_basis(Pos_gle_base):
     A derived class in which we don't enforce the zero values
     """
 
-    def __init__(self, xva_arg, basis, N_basis_elt, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
-        Pos_gle_base.__init__(self, xva_arg, basis, N_basis_elt, saveall, prefix, verbose, kT, trunc)
-        self.N_basis_elt = N_basis_elt
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
+        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt
 
@@ -488,9 +492,8 @@ class Pos_gle_const_kernel(Pos_gle_base):
     A derived class in which we the kernel is set independant of the position
     """
 
-    def __init__(self, xva_arg, basis, N_basis_elt, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
-        Pos_gle_base.__init__(self, xva_arg, basis, N_basis_elt, saveall, prefix, verbose, kT, trunc)
-        self.N_basis_elt = N_basis_elt
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
+        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = 1
 
