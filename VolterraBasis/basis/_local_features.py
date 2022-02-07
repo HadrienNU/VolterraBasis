@@ -63,7 +63,7 @@ class BSplineFeatures(TransformerMixin):
         nsamples, dim = X.shape
         with_const = int(remove_const)
         features = np.zeros((nsamples, dim * (self._nsplines - with_const)) + (dim,) * deriv_order)
-        if self.k == 1:
+        if self.k < deriv_order:
             return features
         for ispline, spline in enumerate(self.bsplines_[: len(self.bsplines_) - with_const]):
             istart = ispline * dim
@@ -79,16 +79,17 @@ class BSplineFeatures(TransformerMixin):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
-    x_range = np.linspace(-10, 10, 30).reshape(-1, 2)
-    basis = BSplineFeatures(6, k=1)
+    x_range = np.linspace(-10, 10, 10).reshape(-1, 2)
+    basis = BSplineFeatures(6, k=3)
     basis.fit(x_range)
     print(x_range.shape)
     print("Basis")
     print(basis.basis(x_range).shape)
     print("Deriv")
-    print(basis.deriv(x_range).shape)
+    print(basis.deriv(x_range, remove_const=True).shape)
+    print(basis.deriv(x_range, remove_const=True)[0, :, :])
     print("Hessian")
-    print(basis.hessian(x_range).shape)
+    print(basis.hessian(x_range, remove_const=True).shape)
 
     # Plot basis
     x_range = np.linspace(-2, 2, 50).reshape(-1, 1)
