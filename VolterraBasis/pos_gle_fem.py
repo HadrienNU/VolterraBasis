@@ -160,7 +160,6 @@ class Pos_gle_fem_base(Pos_gle_base):
                 print("Warning: Found a trajectory shorter than " "the argument trunc. Override.")
             trunc = smallest
         # Find index of the time truncation
-        print(trunc)
         self.trunc_ind = (self.xva_list[0]["time"] <= trunc).sum().data
         if self.verbose:
             print("Trajectories are truncated at lenght {} for dynamic analysis".format(self.trunc_ind))
@@ -237,9 +236,9 @@ class Pos_gle_fem_base(Pos_gle_base):
             for k in range(self.basis.nelems):  # loop over element
                 if (xva["elem"] == k).any():  # If no data don't proceed
                     E, dofs = self.basis_vector(xva.where(xva["elem"] == k, drop=True), elem=k, compute_for="force")  # To check xva[xva["elem"] == k]
-                    print(E.shape, dofs)
-                    avg_gram[dofs, dofs] += np.matmul(E.T, E) / self.weightsum
-                    avg_disp[dofs] += np.matmul(E.T, xva["a"].data) / self.weightsum  # Change to einsum to use vectorial value of E
+                    # print(temp_gram.shape, avg_gram[dofs[:, None], dofs[None, :]].shape)
+                    avg_gram[dofs[:, None], dofs[None, :]] += np.einsum("ijk,ilk->jl", E, E) / self.weightsum
+                    avg_disp[dofs] += np.einsum("ijk,ik->j", E, xva.where(xva["elem"] == k, drop=True)["a"].data) / self.weightsum  # Change to einsum to use vectorial value of E
         self.invgram = self.kT * np.linalg.pinv(avg_gram)
         self.force_coeff = np.matmul(np.linalg.inv(avg_gram), avg_disp)
 
@@ -253,15 +252,30 @@ class Pos_gle_fem_base(Pos_gle_base):
             raise Exception("Mean force has not been computed.")
 
         self.bkbkcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.N_basis_elt_kernel))
-        self.bkdxcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.dim_x))
+        self.bkdxcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, 1))  # ,1 -> To keep compatibility with fortran kernel code
+
+        # fra = np.fft.fft(a, n=2 ** int(np.ceil((np.log(a.shape[0]) / np.log(2))) + 1), axis=0)  # Do we need that big of an array?
+        # if b is None:
+        #     sf = np.conj(fra)[..., np.newaxis] * fra[:, np.newaxis, ...]
+        # else:
+        #     frb = np.fft.fft(b - meanb, n=2 ** int(np.ceil((np.log(len(b)) / np.log(2))) + 1), axis=0)
+        #     sf = np.conj(fra)[..., np.newaxis] * frb[:, np.newaxis, ...]
+        # res = np.fft.ifft(sf, axis=0)
+        # cor = np.real(res[: self.trunc_ind]) / np.arange(a.shape[0], a.shape[0] - self.trunc_ind, -1).reshape(-1, 1, 1)  # Normalisation de la moyenne, plus il y a d'écart entre les points moins il y a de points dans la moyenne
+        # return cor
 
         for weight, xva in zip(self.weights, self.xva_list):
             for k in range(self.basis.nelems):  # loop over element
                 if (xva["elem"] == k).any():  # If no data don't proceed
-                    E_force, E, _, dofs = self.basis_vector(xva)
+                    E_force, E, _, dofs = self.basis_vector(xva.where(xva["elem"] == k, drop=False), elem=k)  # Ca doit sortir un array masqué et on
                     print(E_force.shape, E.shape)
-                    force = np.matmul(E_force, self.force_coeff)  # A changer on veut quelque chose du genre self.force_coeff[dofs]
-                    self.bkdxcorrw += weight * correlation_ND(E, (xva["a"].data - force), trunc=self.trunc_ind)  # Change correlation ND to use vectorial value of E and xva["a"]
+                    force = np.einsum("ijk,j->ik", E_force, self.force_coeff[dofs])
+                    print(force, xva.where(xva["elem"] == k, drop=True)["time"])
+                    # Trouver un moyen de faire efficacement la correlation
+                    # frE = np.fft.fft(E, n=2 ** int(np.ceil((np.log(a.shape[0]) / np.log(2))) + 1), axis=0)
+                    # fra = np.fft.fft(xva.where(xva["elem"] == k, drop=True)["a"].data - force, n=2 ** int(np.ceil((np.log(a.shape[0]) / np.log(2))) + 1), axis=0)
+                    # sfbkdx = np.conj(frE)[..., np.newaxis] * fra[:, np.newaxis, ...]  # Il faut multiply le long de la bonne ligne mais on a un produit scalaire le long des dim_x
+                    self.bkdxcorrw += weight * correlation_ND(E, (xva.where(xva["elem"] == k, drop=True)["a"].data - force), trunc=self.trunc_ind)  # Change correlation ND to use vectorial value of E and xva["a"]
                     self.bkbkcorrw += weight * correlation_ND(E, trunc=self.trunc_ind)
 
         self.bkbkcorrw /= self.weightsum
@@ -338,28 +352,27 @@ class Pos_gle_fem(Pos_gle_fem_base):
         From one trajectory compute the basis element.
         """
         nb_points = xva.dims["time"]
-        bk = np.zeros((nb_points, self.basis.Nbfun))  # Check dimension should we add self.dim_x?
-        dbk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x))  # Check dimension
-        dofs = np.zeros(self.basis.Nbfun)
+        bk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x))  # Check dimension should we add self.dim_x?
+        dbk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x, self.dim_x))  # Check dimension
+        dofs = np.zeros(self.basis.Nbfun, dtype=int)
         loc_value_t = self.basis.mapping.invF(xva["x"].data.reshape(self.dim_x, 1, -1), tind=slice(elem, elem + 1))  # Reshape into dim * 1 element * nb of point
         for i in range(self.basis.Nbfun):
             # To use global basis fct instead (probably more general)
             # phi_tp = ubasis.elem.gbasis(ubasis.mapping, loc_value_tp[:, 0, :], j, tind=slice(m, m + 1)).value
             # Check to use gbasis instead
-            phi_field = self.basis.elem.lbasis(loc_value_t[:, 0, :], i)
-            print(phi_field[0].shape)
-            bk[:, i] = phi_field[0]  # The middle indice is the choice of element, ie only one choice here
+            phi_field = self.basis.elem.gbasis(self.basis.mapping, loc_value_t[:, 0, :], i, tind=slice(elem, elem + 1))
+            bk[:, i, :] = phi_field[0].value.reshape(-1, self.dim_x)  # The middle indice is the choice of element, ie only one choice here
             # dbk via grad?
+            dbk[:, i, :, :] = phi_field[0].grad.reshape(-1, self.dim_x, self.dim_x)
             dofs[i] = self.basis.element_dofs[i, elem]
         # if self.include_const:
         #     bk = np.concatenate((np.ones((bk.shape[0], 1)), bk), axis=1)
         if compute_for == "force":
             return bk, dofs
-        dbk = self.basis.deriv(xva["x"].data, remove_const=self.remove_const_)
         if compute_for == "kernel":  # For kernel evaluation
             return dbk, dofs
         elif compute_for == "corrs":
-            E = np.einsum("nld,nd->nl", dbk, xva["v"].data)
+            E = np.einsum("nlfd,nd->nlf", dbk, xva["v"].data)
             return bk, E, None, dofs
         else:
             raise ValueError("Basis evaluation goal not specified")
