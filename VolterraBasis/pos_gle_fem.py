@@ -236,7 +236,8 @@ class Pos_gle_fem_base(Pos_gle_base):
         for weight, xva in zip(self.weights, self.xva_list):
             for k in range(self.basis.nelems):  # loop over element
                 if (xva["elem"] == k).any():  # If no data don't proceed
-                    E, dofs = self.basis_vector(xva[xva["elem"] == k], elem=k, compute_for="force")  # To check xva[xva["elem"] == k]
+                    E, dofs = self.basis_vector(xva.where(xva["elem"] == k, drop=True), elem=k, compute_for="force")  # To check xva[xva["elem"] == k]
+                    print(E.shape, dofs)
                     avg_gram[dofs, dofs] += np.matmul(E.T, E) / self.weightsum
                     avg_disp[dofs] += np.matmul(E.T, xva["a"].data) / self.weightsum  # Change to einsum to use vectorial value of E
         self.invgram = self.kT * np.linalg.pinv(avg_gram)
@@ -336,8 +337,9 @@ class Pos_gle_fem(Pos_gle_fem_base):
         """
         From one trajectory compute the basis element.
         """
-        bk = np.zeros((xva.shape[0], self.basis.Nbfun))  # Check dimension should we add self.dim_x?
-        dbk = np.zeros((xva.shape[0], self.basis.Nbfun, self.dim_x))  # Check dimension
+        nb_points = xva.dims["time"]
+        bk = np.zeros((nb_points, self.basis.Nbfun))  # Check dimension should we add self.dim_x?
+        dbk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x))  # Check dimension
         dofs = np.zeros(self.basis.Nbfun)
         loc_value_t = self.basis.mapping.invF(xva["x"].data.reshape(self.dim_x, 1, -1), tind=slice(elem, elem + 1))  # Reshape into dim * 1 element * nb of point
         for i in range(self.basis.Nbfun):
@@ -345,7 +347,8 @@ class Pos_gle_fem(Pos_gle_fem_base):
             # phi_tp = ubasis.elem.gbasis(ubasis.mapping, loc_value_tp[:, 0, :], j, tind=slice(m, m + 1)).value
             # Check to use gbasis instead
             phi_field = self.basis.elem.lbasis(loc_value_t[:, 0, :], i)
-            bk[:, i] = phi_field.value  # The middle indice is the choice of element, ie only one choice here
+            print(phi_field[0].shape)
+            bk[:, i] = phi_field[0]  # The middle indice is the choice of element, ie only one choice here
             # dbk via grad?
             dofs[i] = self.basis.element_dofs[i, elem]
         # if self.include_const:
