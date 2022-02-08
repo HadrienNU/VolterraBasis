@@ -239,6 +239,8 @@ class Pos_gle_base(object):
         if self.verbose:
             print("Use dt:", dt)
         if k0 is None and method in ["trapz", "second_kind"]:  # Then we should compute initial value from time derivative at zero
+            if self.dotbkdxcorrw is None:
+                raise Exception("Need correlation with derivative functions to compute the kernel using this method or provide initial value.")
             k0 = np.matmul(np.linalg.inv(self.bkbkcorrw[0, :, :]), self.dotbkdxcorrw[0, :, :])
             if self.verbose:
                 print("K0", k0)
@@ -260,6 +262,8 @@ class Pos_gle_base(object):
             self.kernel = np.insert(self.kernel, 0, k0, axis=0)
             self.time = self.time[:-1, :]
         elif method == "second_kind":
+            if self.dotbkdxcorrw is None or self.dotbkbkcorrw is None:
+                raise Exception("Need correlation with derivative functions to compute the kernel using this method, please use other method.")
             self.kernel = kernel_second_kind(k0, self.bkbkcorrw[0, :, :], self.dotbkbkcorrw, self.dotbkdxcorrw, dt)
         else:
             raise Exception("Method for volterra inversion is not in  {rectangular, midpoint, midpoint_w_richardson,trapz,second_kind}")

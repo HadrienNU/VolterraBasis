@@ -2,7 +2,6 @@
 This the main estimator module
 """
 import numpy as np
-import scipy.interpolate
 
 from sklearn.base import TransformerMixin
 
@@ -101,14 +100,7 @@ class TensorialBasis2D(TransformerMixin):
 #         return self.deriv(X, deriv_order=2, remove_const=remove_const)
 
 
-class RectBivariateSplines(TransformerMixin):
-    """
-    2D Rectangular Splines
-    """
-
-
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
     from _local_features import BSplineFeatures
 
     # Plot basis
@@ -116,8 +108,9 @@ if __name__ == "__main__":
     n_elems = 7
     ten_basis = TensorialBasis2D(BSplineFeatures(n_elems)).fit(x_range)
     print(x_range.shape)
+    print("Basis")
     print(ten_basis.basis(x_range).shape)
     print("Deriv")
-    print(ten_basis.deriv(x_range).shape)
+    print(ten_basis.deriv(x_range, remove_const=True).shape)
     print("Hessian")
     print(ten_basis.hessian(x_range).shape)

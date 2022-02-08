@@ -66,10 +66,9 @@ class BSplineFeatures(TransformerMixin):
         if self.k < deriv_order:
             return features
         for ispline, spline in enumerate(self.bsplines_[: len(self.bsplines_) - with_const]):
-            istart = ispline * dim
-            iend = (ispline + 1) * dim
+            istart = (ispline) * dim
             for i in range(dim):
-                features[(Ellipsis, slice(istart, iend)) + (i,) * deriv_order] = scipy.interpolate.splev(X[:, slice(i, i + 1)], spline, der=deriv_order)
+                features[(Ellipsis, slice(istart + i, istart + i + 1)) + (i,) * deriv_order] = scipy.interpolate.splev(X[:, slice(i, i + 1)], spline, der=deriv_order)
         return features
 
     def hessian(self, X, remove_const=False):
@@ -87,7 +86,6 @@ if __name__ == "__main__":
     print(basis.basis(x_range).shape)
     print("Deriv")
     print(basis.deriv(x_range, remove_const=True).shape)
-    print(basis.deriv(x_range, remove_const=True)[0, :, :])
     print("Hessian")
     print(basis.hessian(x_range, remove_const=True).shape)
 

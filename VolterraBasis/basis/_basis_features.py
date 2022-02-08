@@ -67,13 +67,10 @@ class PolynomialFeatures(TransformerMixin):
         nsamples, dim = X.shape
         with_const = int(remove_const)
         features = np.zeros((nsamples, dim * (self.degree - with_const)) + (dim,) * deriv_order)
-        for n in range(self.degree - with_const):
-            istart = (n) * dim
-            iend = (n + 1) * dim
-            # print(self.polynom.basis(n).deriv(deriv_order)(X).shape)
-            # print(features.shape)
+        for n in range(with_const, self.degree):
+            istart = (n - with_const) * dim
             for i in range(dim):
-                features[(Ellipsis, slice(istart, iend)) + (i,) * deriv_order] = self.polynom.basis(n).deriv(deriv_order)(X[:, slice(i, i + 1)])
+                features[(Ellipsis, slice(istart + i, istart + i + 1)) + (i,) * deriv_order] = self.polynom.basis(n).deriv(deriv_order)(X[:, slice(i, i + 1)])
         return features
 
     def hessian(self, X, remove_const=False):
@@ -104,7 +101,7 @@ class SplineFctFeatures(TransformerMixin):
         nsamples, dim = X.shape
         grad = np.zeros((nsamples, dim) + (dim,) * deriv_order)
         for i in range(dim):
-            grad[(Ellipsis,) + (i,) * deriv_order] = self.spl.derivative(deriv_order)(X[:, slice(i, i + 1)])
+            grad[(Ellipsis, slice(i, i + 1)) + (i,) * (deriv_order)] = self.spl.derivative(deriv_order)(X[:, slice(i, i + 1)])
         return grad
 
     def hessian(self, X, remove_const=False):
@@ -189,8 +186,9 @@ if __name__ == "__main__":
     print(basis.basis(x_range).shape)
     print("Deriv")
     print(basis.deriv(x_range).shape)
-    print("Hessian")
-    print(basis.hessian(x_range).shape)
+    print(basis.deriv(x_range, remove_const=True)[0, :, :])
+    # print("Hessian")
+    # print(basis.hessian(x_range).shape)
 
     # Plot basis
     x_range = np.linspace(-2, 2, 50).reshape(-1, 1)

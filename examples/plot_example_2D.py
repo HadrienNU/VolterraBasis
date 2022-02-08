@@ -19,7 +19,7 @@ sys.path.insert(0, "../")  # To use local version of the library, remove when in
 import VolterraBasis as vb
 import VolterraBasis.basis as bf
 
-trj = np.loadtxt("example_lj.trj")
+trj = np.loadtxt("example_2d.trj")
 xva_list = []
 print(trj.shape)
 # for i in range(1, trj.shape[1]):
@@ -27,14 +27,14 @@ print(trj.shape)
 #     xvaf = vb.compute_va(xf)
 #     xva_list.append(xvaf)
 
-xf = vb.xframe(trj[:, 1:3], trj[:, 0])
+xf = vb.xframe(trj[:, (1, 3)], trj[:, 0])
 xvaf = vb.compute_va(xf)
 xva_list.append(xvaf)
 
-Nsplines = 10
+Nsplines = 5
 
-# mymem = vb.Pos_gle(xva_list, bf.TensorialBasis2D(bf.BSplineFeatures(Nsplines)), trunc=10, kT=1.0, with_const=True, saveall=False)
-mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), trunc=10, kT=1.0, with_const=True, saveall=False)
+# mymem = vb.Pos_gle(xva_list, bf.TensorialBasis2D(bf.BSplineFeatures(Nsplines)), trunc=10, kT=1.0, with_const=False, saveall=False)
+mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), trunc=10, kT=1.0, with_const=False, saveall=False)
 # mymem = vb.Pos_gle(xva_list, bf.TensorialBasis2D(bf.LinearFeatures()), trunc=10, kT=1.0, with_const=False, saveall=False)
 print("Dimension of observable", mymem.dim_x)
 mymem.compute_mean_force()
