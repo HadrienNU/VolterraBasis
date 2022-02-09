@@ -27,7 +27,7 @@ print(trj.shape)
 #     xvaf = vb.compute_va(xf)
 #     xva_list.append(xvaf)
 
-xf = vb.xframe(trj[:, (1, 3)], trj[:, 0])
+xf = vb.xframe(trj[:, (1, 3)], trj[:, 0] - trj[0, 0])
 xvaf = vb.compute_va(xf)
 xva_list.append(xvaf)
 

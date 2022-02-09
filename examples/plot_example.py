@@ -23,7 +23,7 @@ trj = np.loadtxt("example_lj.trj")
 xva_list = []
 print(trj.shape)
 for i in range(1, trj.shape[1]):
-    xf = vb.xframe(trj[:, i], trj[:, 0])
+    xf = vb.xframe(trj[:, i], trj[:, 0] - trj[0, 0])
     xvaf = vb.compute_va(xf)
     xva_list.append(xvaf)
 

@@ -3,6 +3,7 @@ import xarray as xr
 from scipy.integrate import trapezoid
 from skfem.assembly.basis import Basis
 from scipy.spatial import cKDTree
+from scipy.ndimage.interpolation import shift
 
 from .pos_gle import Pos_gle_base
 from .correlation import correlation_ND
@@ -197,10 +198,9 @@ class Pos_gle_fem_base(Pos_gle_base):
             print("Use kT:", self.kT)
         avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
         for weight, xva in zip(self.weights, self.xva_list):
-            for k in range(self.basis.nelems):  # loop over element
-                if (xva["elem"] == k).any():  # If no data don't proceed
-                    E, dofs = self.basis_vector(xva[xva["elem"] == k], elem=k, compute_for="force")  # To check xva[xva["elem"] == k]
-                    avg_gram[dofs, dofs] += np.matmul(E.T, E) / self.weightsum  #
+            for k, grouped_xva in list(xva.groupby("elem")):
+                E, dofs = self.basis_vector(grouped_xva, elem=k, compute_for="force")  # To check xva[xva["elem"] == k]
+                avg_gram[dofs, dofs] += np.matmul(E.T, E) / self.weightsum  #
         self.invgram = self.kT * np.linalg.pinv(avg_gram)
 
         if self.verbose:
@@ -233,12 +233,11 @@ class Pos_gle_fem_base(Pos_gle_base):
         avg_disp = np.zeros((self.N_basis_elt_force))
         avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
         for weight, xva in zip(self.weights, self.xva_list):
-            for k in range(self.basis.nelems):  # loop over element
-                if (xva["elem"] == k).any():  # If no data don't proceed
-                    E, dofs = self.basis_vector(xva.where(xva["elem"] == k, drop=True), elem=k, compute_for="force")  # To check xva[xva["elem"] == k]
-                    # print(temp_gram.shape, avg_gram[dofs[:, None], dofs[None, :]].shape)
-                    avg_gram[dofs[:, None], dofs[None, :]] += np.einsum("ijk,ilk->jl", E, E) / self.weightsum
-                    avg_disp[dofs] += np.einsum("ijk,ik->j", E, xva.where(xva["elem"] == k, drop=True)["a"].data) / self.weightsum  # Change to einsum to use vectorial value of E
+            for k, grouped_xva in list(xva.groupby("elem")):
+                E, dofs = self.basis_vector(grouped_xva, elem=k, compute_for="force")  # To check xva[xva["elem"] == k]
+                # print(temp_gram.shape, avg_gram[dofs[:, None], dofs[None, :]].shape)
+                avg_gram[dofs[:, None], dofs[None, :]] += np.einsum("ijk,ilk->jl", E, E) / self.weightsum
+                avg_disp[dofs] += np.einsum("ijk,ik->j", E, xva.where(xva["elem"] == k, drop=True)["a"].data) / self.weightsum  # Change to einsum to use vectorial value of E
         self.invgram = self.kT * np.linalg.pinv(avg_gram)
         self.force_coeff = np.matmul(np.linalg.inv(avg_gram), avg_disp)
 
@@ -265,23 +264,43 @@ class Pos_gle_fem_base(Pos_gle_base):
         # return cor
 
         for weight, xva in zip(self.weights, self.xva_list):
-            for k in range(self.basis.nelems):  # loop over element
-                if (xva["elem"] == k).any():  # If no data don't proceed
-                    E_force, E, _, dofs = self.basis_vector(xva.where(xva["elem"] == k, drop=False), elem=k)  # Ca doit sortir un array masqué et on
-                    print(E_force.shape, E.shape)
-                    force = np.einsum("ijk,j->ik", E_force, self.force_coeff[dofs])
-                    print(force, xva.where(xva["elem"] == k, drop=True)["time"])
-                    # Trouver un moyen de faire efficacement la correlation
-                    # frE = np.fft.fft(E, n=2 ** int(np.ceil((np.log(a.shape[0]) / np.log(2))) + 1), axis=0)
-                    # fra = np.fft.fft(xva.where(xva["elem"] == k, drop=True)["a"].data - force, n=2 ** int(np.ceil((np.log(a.shape[0]) / np.log(2))) + 1), axis=0)
-                    # sfbkdx = np.conj(frE)[..., np.newaxis] * fra[:, np.newaxis, ...]  # Il faut multiply le long de la bonne ligne mais on a un produit scalaire le long des dim_x
-                    self.bkdxcorrw += weight * correlation_ND(E, (xva.where(xva["elem"] == k, drop=True)["a"].data - force), trunc=self.trunc_ind)  # Change correlation ND to use vectorial value of E and xva["a"]
-                    self.bkbkcorrw += weight * correlation_ND(E, trunc=self.trunc_ind)
+            loc_groups = xva.groupby("elem")
+            group_inds = xva.groupby("elem").groups
+            for k, grouped_xva in list(loc_groups):
+                E_force, E, _, dofs = self.basis_vector(grouped_xva, elem=k)  # Ca doit sortir un array masqué et on
+                print(E_force.shape, E.shape)
+                a_m_force = grouped_xva["a"].data - np.einsum("ijk,j->ik", E_force, self.force_coeff[dofs])
+                # print(a_m_force.shape, grouped_xva["time"])
+                inds = np.array(group_inds[k])  # Obtenir les indices du groupe
+                print(inds)
+                for n in range(5):  # range(self.trunc_ind) # On peut prange ce for avec numba
+                    E_shift = E[slice(None, None if n == 0 else -n), :, :]  # slice(None,None if n==0 else -n) shift(E, [-n, 0, 0])
+                    print(E_shift.shape)
+                    prodbkdx = np.einsum("ijk,ik->ij", E_shift, a_m_force[n:, :])  # On peut virer la fin des array
+                    prodbkbk = np.einsum("ijk,ilk->ijl", E_shift, E[n:, :, :])
+                    print(prodbkdx.shape, prodbkbk.shape)
+                    print("Affectation")
+                    loc_inds = inds[n:] - inds[slice(None, None if n == 0 else -n)]
+                    print(loc_inds.shape)
+                    for k, loc_ind in enumerate(loc_inds):
+                        # C'est un peu un groupby on voudrait prodbkdx.groub_by((shift(inds, n, cval=np.NaN) - inds).sum(axis=0) -> comme ça on a des valeurs unique, ensuite on enlève tout ce qui est  > self.trunc_inds
+                        # print(loc_ind)
+                        # Only consider loc_inds < self.trunc_inds
+                        if loc_ind < self.trunc_ind:
+                            self.bkbkcorrw[loc_ind, dofs[:, None], dofs[None, :]] += prodbkbk[k]
+                            self.bkdxcorrw[loc_ind, dofs, 0] += prodbkdx[k]
+
+                # Trouver un moyen de faire efficacement la correlation
+                # frE = np.fft.fft(E, n=2 ** int(np.ceil((np.log(a.shape[0]) / np.log(2))) + 1), axis=0)
+                # fra = np.fft.fft(xva.where(xva["elem"] == k, drop=True)["a"].data - force, n=2 ** int(np.ceil((np.log(a.shape[0]) / np.log(2))) + 1), axis=0)
+                # sfbkdx = np.conj(frE)[..., np.newaxis] * fra[:, np.newaxis, ...]  # Il faut multiply le long de la bonne ligne mais on a un produit scalaire le long des dim_x
+                # self.bkdxcorrw += weight * correlation_ND(E, (a_m_force), trunc=self.trunc_ind)  # Change correlation ND to use vectorial value of E and xva["a"]
+                # self.bkbkcorrw += weight * correlation_ND(E, trunc=self.trunc_ind)
+                # self.bkbkcorrw[dofs[:, None], dofs[None, :]] += /self.weightsum
+                # self.bkdxcorrw [:,dofs] += / self.weightsum
 
         self.bkbkcorrw /= self.weightsum
         self.bkdxcorrw /= self.weightsum
-        self.dotbkdxcorrw /= self.weightsum
-        self.dotbkbkcorrw /= self.weightsum
 
         if self.saveall:
             np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(-1, self.N_basis_elt_kernel))

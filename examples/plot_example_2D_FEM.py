@@ -24,7 +24,7 @@ import VolterraBasis.basis as bf
 trj = np.loadtxt("example_2d.trj")
 print(trj.shape)
 
-xf = vb.xframe(trj[:, (1, 3)], trj[:, 0])
+xf = vb.xframe(trj[:, (1, 3)], trj[:, 0] - trj[0, 0])
 xva = vb.compute_va(xf)
 
 vertices, tri = vb.centroid_driven_mesh(xva["x"].data, 30)
@@ -42,16 +42,17 @@ mymem = vb.Pos_gle_fem([xvaf], basis, trunc=10, kT=1.0, with_const=False, saveal
 print("Dimension of observable", mymem.dim_x)
 mymem.compute_mean_force()
 # print(mymem.force_coeff)
-print("Force coeff shape", mymem.force_coeff.shape)
+print("Force coeff shape", mymem.force_coeff.shape, mymem.force_coeff[basis.nodal_dofs].T.shape)
+force = mymem.force_coeff[basis.nodal_dofs].T
 # Plot force
-m.save("force_field.vtk", {"force": mymem.force_coeff[basis.nodal_dofs].T})
+# m.save("force_field.vtk", {"force": force})
 # ax = draw(m)
-# ax.quiver(*m.p, *velocity.reshape((-1, 2)).T, m.p[0])
+# ax.quiver(*m.p, *force.T, m.p[0])
 # plt.show()
-print(mymem.N_basis_elt, mymem.N_basis_elt_force, mymem.N_basis_elt_kernel)
+# print(mymem.N_basis_elt, mymem.N_basis_elt_force, mymem.N_basis_elt_kernel)
 # # print(mymem.basis.b1.n_output_features_, mymem.basis.b2.n_output_features_)
-# mymem.compute_corrs()
-# mymem.compute_kernel(method="trapz")
+mymem.compute_corrs()
+mymem.compute_kernel(method="rectangular")  # Do matrix inversion in the python code
 # time, kernel = mymem.kernel_eval([[1.5, 1.0], [2.0, 1.5], [2.5, 1.0]])
 # print(time.shape, kernel.shape)
 # # To find a correct parametrization of the space
