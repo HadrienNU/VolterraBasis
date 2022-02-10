@@ -13,8 +13,7 @@ __all__ = ["Pos_gle", "Pos_gle_with_friction", "Pos_gle_no_vel_basis", "Pos_gle_
 
 def xframe(x, time, v=None, fix_time=False, round_time=1.0e-4, dt=-1):
     """
-    Creates a pandas dataframe (['t', 'x']) from a trajectory. Currently the time
-    is saved twice, as an index and as a separate field.
+    Creates a xarray dataset (['t', 'x']) from a trajectory.
 
     Parameters
     ----------
@@ -66,12 +65,12 @@ def compute_a(xvf):
 
 def compute_va(xf, correct_jumps=False):
     """
-    Computes velocity and acceleration from a data frame with ['t', 'x'] as
+    Computes velocity and acceleration from a dataset with ['t', 'x'] as
     returned by xframe.
 
     Parameters
     ----------
-    xf : pandas dataframe (['t', 'x'])
+    xf : xarray dataframe (['t', 'x'])
 
     correct_jumps : bool, default=False
         Jumps in the trajectory are removed (relevant for periodic data).
