@@ -3,10 +3,8 @@ import xarray as xr
 from scipy.integrate import trapezoid
 from skfem.assembly.basis import Basis
 from scipy.spatial import cKDTree
-from scipy.ndimage.interpolation import shift
 
 from .pos_gle import Pos_gle_base
-from .correlation import correlation_ND
 
 
 class ElementFinder:
@@ -268,20 +266,20 @@ class Pos_gle_fem_base(Pos_gle_base):
             group_inds = xva.groupby("elem").groups
             for k, grouped_xva in list(loc_groups):
                 E_force, E, _, dofs = self.basis_vector(grouped_xva, elem=k)  # Ca doit sortir un array masqué et on
-                print(E_force.shape, E.shape)
+                # print(E_force.shape, E.shape)
                 a_m_force = grouped_xva["a"].data - np.einsum("ijk,j->ik", E_force, self.force_coeff[dofs])
                 # print(a_m_force.shape, grouped_xva["time"])
                 inds = np.array(group_inds[k])  # Obtenir les indices du groupe
-                print(inds)
+                # print(inds)
                 for n in range(5):  # range(self.trunc_ind) # On peut prange ce for avec numba
                     E_shift = E[slice(None, None if n == 0 else -n), :, :]  # slice(None,None if n==0 else -n) shift(E, [-n, 0, 0])
-                    print(E_shift.shape)
+                    # print(E_shift.shape)
                     prodbkdx = np.einsum("ijk,ik->ij", E_shift, a_m_force[n:, :])  # On peut virer la fin des array
                     prodbkbk = np.einsum("ijk,ilk->ijl", E_shift, E[n:, :, :])
-                    print(prodbkdx.shape, prodbkbk.shape)
-                    print("Affectation")
+                    # print(prodbkdx.shape, prodbkbk.shape)
+                    # print("Affectation")
                     loc_inds = inds[n:] - inds[slice(None, None if n == 0 else -n)]
-                    print(loc_inds.shape)
+                    # print(loc_inds.shape)
                     for k, loc_ind in enumerate(loc_inds):
                         # C'est un peu un groupby on voudrait prodbkdx.groub_by((shift(inds, n, cval=np.NaN) - inds).sum(axis=0) -> comme ça on a des valeurs unique, ensuite on enlève tout ce qui est  > self.trunc_inds
                         # print(loc_ind)
@@ -301,7 +299,7 @@ class Pos_gle_fem_base(Pos_gle_base):
 
         self.bkbkcorrw /= self.weightsum
         self.bkdxcorrw /= self.weightsum
-
+        print(np.sort(np.linalg.eigvals(self.bkbkcorrw[0, :, :])))
         if self.saveall:
             np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(-1, self.N_basis_elt_kernel))
             np.savetxt(self.prefix + self.corrsfile, self.bkbkcorrw.reshape(-1, self.N_basis_elt_kernel ** 2))
