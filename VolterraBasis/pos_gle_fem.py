@@ -68,19 +68,6 @@ class ElementFinder:
         return (X[0] >= 0) * (X[1] >= 0) * (X[2] >= 0) * (1 - X[0] - X[1] - X[2] >= 0)
 
 
-def compute_element_location(xva, element_finder):
-    """
-    Computes the location within the mesh of the trajectory.
-
-    Parameters
-    ----------
-    xvf : xarray dataset (['x'])
-
-    element_finder: Instance of ElementFinder class
-    """
-    return xva.assign({"elem": (["time"], element_finder.find(xva["x"].data))})
-
-
 class Pos_gle_fem_base(Pos_gle_base):
     """
     Memory extraction using finite element basis.
@@ -88,7 +75,7 @@ class Pos_gle_fem_base(Pos_gle_base):
     Method "trapz" and "second_kind" are not implemented
     """
 
-    def __init__(self, xva_arg, basis: Basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, **kwargs):
+    def __init__(self, xva_arg, basis: Basis, element_finder, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, **kwargs):
         """
         Using Finite element basis functions.
 
@@ -99,9 +86,9 @@ class Pos_gle_fem_base(Pos_gle_base):
             The timeseries to analyze. It should be either a xarray timeseries
             or a listlike collection of them.
         basis :  scikitfem Basis class
-                This class should implement, basis() and deriv() function
-                and deal with periodicity of the data.
-                If a fit() method is defined, it will be called at initialization
+            The finite element basis
+        element_finder: ElementFinder class
+            An initialized ElementFinder class to locate element
         saveall : bool, default=True
             Whether to save all output functions.
         prefix : str
@@ -115,25 +102,9 @@ class Pos_gle_fem_base(Pos_gle_base):
             time value.
         """
         Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
-
-    def _do_check(self, xva_arg):
-        if xva_arg is not None:
-            if isinstance(xva_arg, xr.Dataset):
-                self.xva_list = [xva_arg]
-            else:
-                self.xva_list = xva_arg
-            for xva in self.xva_list:
-                for col in ["x", "v", "a"]:
-                    if col not in xva.data_vars:
-                        raise Exception("Please provide txva dataset, " "or an iterable collection (i.e. list) " "of txva dataset.")
-                if "elem" not in xva.data_vars:
-                    raise Exception("Please compute element location.")
-                if "time" not in xva.dims:
-                    raise Exception("Time is not a coordinate. Please provide txva dataset, " "or an iterable collection (i.e. list) " "of txva dataset.")
-                if "dt" not in xva.attrs:
-                    raise Exception("Timestep not in dataset attrs")
-        else:
-            self.xva_list = None
+        self.element_finder = element_finder
+        for xva in self.xva_list:
+            xva.update({"elem": (["time"], self.element_finder.find(xva["x"].data))})
 
     def _check_basis(self, basis):
         """
@@ -236,7 +207,7 @@ class Pos_gle_fem_base(Pos_gle_base):
                 # print(a_m_force.shape, grouped_xva["time"])
                 inds = np.array(group_inds[k])  # Obtenir les indices du groupe
                 # print(inds)
-                for n in range(5):  # range(self.trunc_ind) # On peut prange ce for avec numba
+                for n in range(self.trunc_ind):  # # On peut prange ce for avec numba
                     E_shift = E[slice(None, None if n == 0 else -n), :, :]  # slice(None,None if n==0 else -n) shift(E, [-n, 0, 0])
                     # print(E_shift.shape)
                     prodbkdx = np.einsum("ijk,ik->ij", E_shift, a_m_force[n:, :])  # On peut virer la fin des array
@@ -268,10 +239,71 @@ class Pos_gle_fem_base(Pos_gle_base):
         if self.rank_projection:
             self._set_range_projection(rank_tol)
 
-        print(np.sort(np.linalg.eigvals(self.bkbkcorrw[0, :, :])))
+        # print(np.sort(np.linalg.eigvals(self.bkbkcorrw[0, :, :])))
         if self.saveall:
             np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(-1, self.N_basis_elt_kernel))
             np.savetxt(self.prefix + self.corrsfile, self.bkbkcorrw.reshape(-1, self.N_basis_elt_kernel ** 2))
+
+    def compute_noise(self, xva, trunc_kernel=None):
+        """
+        From a trajectory get the noise.
+
+        Parameters
+        ----------
+        xva : xarray dataset (['time', 'x', 'v', 'a', 'elem']) .
+            Use compute_va() or see its output for format details.
+            You should have run compute_element_location() on it.
+            Input trajectory to compute noise.
+        trunc_kernel : int
+                Number of datapoint of the kernel to consider.
+                Can be used to remove unphysical divergence of the kernel or shortten execution time.
+        """
+        if self.force_coeff is None:
+            raise Exception("Mean force has not been computed.")
+        if trunc_kernel is None:
+            trunc_kernel = self.trunc_ind
+
+        if self.method == "trapz":
+            trunc_kernel -= 1
+        elif self.method in ["midpoint", "midpoint_w_richardson"]:
+            raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
+        time = xva["time"].data
+        dt = xva.dt
+
+        force = np.zeros(xva["x"].data.shape)
+        memory = np.zeros(xva["x"].data.shape)
+
+        xva.update({"elem": (["time"], self.element_finder.find(xva["x"].data))})
+        loc_groups = xva.groupby("elem")
+        group_inds = xva.groupby("elem").groups
+        for k, grouped_xva in list(loc_groups):
+            E_force, E, _, dofs = self.basis_vector(grouped_xva, elem=k)
+            inds = np.array(group_inds[k])  # Obtenir les indices du groupe
+            force[inds, :] = np.einsum("ijk,j->ik", E, self.force_coeff[dofs])
+            for n in range(memory.shape[0]):  # # On peut prange ce for avec numba
+                if n <= trunc_kernel:
+                    E_shift = E[slice(None, None if n == 0 else -n), :, :]  # slice(None,None if n==0 else -n) shift(E, [-n, 0, 0])
+                    to_integrate = np.einsum("ikd,ik->id", E[: n + 1, :][::-1, :], self.kernel[: n + 1, :, 0])
+                    prodbkdx = np.einsum("ijk,ik->ij", E_shift, a_m_force[n:, :])  # On peut virer la fin des array
+                else:
+                    E_shift = E[slice(None, None if n == 0 else -n), :, :]  # slice(None,None if n==0 else -n) shift(E, [-n, 0, 0])
+                    to_integrate = np.einsum("ik,ikl->il", E[n - trunc_kernel + 1 : n + 1, :][::-1, :], self.kernel[:trunc_kernel, :, :])
+                loc_inds = inds[n:] - inds[slice(None, None if n == 0 else -n)]
+                # print(loc_inds.shape)
+                for k, loc_ind in enumerate(loc_inds):
+                    if loc_ind < self.trunc_ind:
+                        self.memory[loc_ind] += -1 * to_integrate[k] * dt
+
+        for n in range(trunc_kernel):
+            to_integrate = np.einsum("ik,ikl->il", E[: n + 1, :][::-1, :], self.kernel[: n + 1, :, :])
+            memory[n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
+            # memory[n] = -1 * to_integrate.sum() * dt
+        # Only select self.trunc_ind points for the integration
+        for n in range(trunc_kernel, memory.shape[0]):
+            to_integrate = np.einsum("ik,ikl->il", E[n - trunc_kernel + 1 : n + 1, :][::-1, :], self.kernel[:trunc_kernel, :, :])
+            memory[n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
+            # memory[n] = -1 * to_integrate.sum() * dt
+        return time, xva["a"].data - force - memory, xva["a"].data, force, memory
 
     def dU(self, x):
         """
@@ -279,8 +311,18 @@ class Pos_gle_fem_base(Pos_gle_base):
         """
         if self.force_coeff is None:
             raise Exception("Mean force has not been computed.")
-        E = self.basis_vector(xr.Dataset({"x": (["time", "dim_x"], np.asarray(x).reshape(-1, self.dim_x))}), compute_for="force")
-        return -1 * np.einsum("ik,kl->il", E, self.force_coeff)  # Return the force as array (nb of evalution point x dim_x)
+        x = np.asarray(x).reshape(-1, self.dim_x)
+        output_dU = np.zeros_like(x)
+        eval_pos = xr.Dataset({"x": (["time", "dim_x"], x)})
+        eval_pos.update({"elem": (["time"], self.element_finder.find(x))})
+        loc_groups = eval_pos.groupby("elem")
+        group_inds = eval_pos.groupby("elem").groups
+        for k, grouped_xva in list(loc_groups):
+            E, dofs = self.basis_vector(grouped_xva, elem=k, compute_for="force")  # To check xva[xva["elem"] == k]
+            inds = np.array(group_inds[k])
+            output_dU[inds, :] = np.einsum("ijk,j->ik", E, self.force_coeff[dofs])
+        # E = self.basis_vector(), compute_for="force")
+        return -1 * output_dU  # Return the force as array (nb of evalution point x dim_x)
 
     def kernel_eval(self, x):
         """
@@ -288,8 +330,18 @@ class Pos_gle_fem_base(Pos_gle_base):
         """
         if self.kernel is None:
             raise Exception("Kernel has not been computed.")
-        E = self.basis_vector(xr.Dataset({"x": (["time", "dim_x"], np.asarray(x).reshape(-1, self.dim_x))}), compute_for="kernel")
-        return self.time, np.einsum("jkd,ikl->ijld", E, self.kernel)  # Return the kernal as array (time x nb of evalution point x dim_x x dim_x)
+        x = np.asarray(x).reshape(-1, self.dim_x)
+        output_kernel = np.zeros((self.kernel.shape[0], x.shape[0], self.dim_x, self.dim_x))
+        eval_pos = xr.Dataset({"x": (["time", "dim_x"], x)})
+        eval_pos.update({"elem": (["time"], self.element_finder.find(x))})
+        loc_groups = eval_pos.groupby("elem")
+        group_inds = eval_pos.groupby("elem").groups
+        for k, grouped_xva in list(loc_groups):
+            E, dofs = self.basis_vector(grouped_xva, elem=k, compute_for="kernel")
+            inds = np.array(group_inds[k])
+            print(E.shape, self.kernel[:, dofs, :].shape)
+            output_kernel[:, inds, :, :] = np.einsum("jkdf,ik->ijdf", E, self.kernel[:, dofs, 0])
+        return self.time, output_kernel  # Return the kernel as array (time x nb of evalution point x dim_x x dim_x)
 
 
 class Pos_gle_fem(Pos_gle_fem_base):
@@ -298,7 +350,7 @@ class Pos_gle_fem(Pos_gle_fem_base):
     holding all data and the extracted memory kernels.
     """
 
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
+    def __init__(self, xva_arg, basis, element_finder, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
         """
         Create an instance of the Pos_gle class.
 
@@ -308,10 +360,10 @@ class Pos_gle_fem(Pos_gle_fem_base):
             Use compute_va() or see its output for format details.
             The timeseries to analyze. It should be either a xarray timeseries
             or a listlike collection of them.
-        basis :  scikit-learn transformer to get the element of the basis
-                This class should implement, basis() and deriv() function
-                and deal with periodicity of the data.
-                If a fit() method is defined, it will be called at initialization
+        basis :  scikitfem Basis class
+            The finite element basis
+        element_finder: ElementFinder class
+            An initialized ElementFinder class to locate element
         saveall : bool, default=True
             Whether to save all output functions.
         prefix : str
@@ -324,7 +376,7 @@ class Pos_gle_fem(Pos_gle_fem_base):
             Truncate all correlation functions and the memory kernel after this
             time value.
         """
-        Pos_gle_fem_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
+        Pos_gle_fem_base.__init__(self, xva_arg, basis, element_finder, saveall, prefix, verbose, kT, trunc)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt
         self.rank_projection = True
@@ -356,43 +408,3 @@ class Pos_gle_fem(Pos_gle_fem_base):
             return bk, E, None, dofs
         else:
             raise ValueError("Basis evaluation goal not specified")
-
-    def compute_noise(self, xva, trunc_kernel=None):
-        """
-        From a trajectory get the noise.
-
-        Parameters
-        ----------
-        xva : xarray dataset (['time', 'x', 'v', 'a', 'elem']) .
-            Use compute_va() or see its output for format details.
-            You should have run compute_element_location() on it.
-            Input trajectory to compute noise.
-        trunc_kernel : int
-                Number of datapoint of the kernel to consider.
-                Can be used to remove unphysical divergence of the kernel or shortten execution time.
-        """
-        if self.force_coeff is None:
-            raise Exception("Mean force has not been computed.")
-        if trunc_kernel is None:
-            trunc_kernel = self.trunc_ind
-        time = xva["time"].data
-        dt = time[1] - time[0]
-        E_force, E, _ = self.basis_vector(xva)
-        force = np.matmul(E_force, self.force_coeff)
-        memory = np.zeros(force.shape)
-        if self.method == "trapz":
-            trunc_kernel -= 1
-        elif self.method in ["midpoint", "midpoint_w_richardson"]:
-            raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
-        # else:
-        #     pass
-        for n in range(trunc_kernel):
-            to_integrate = np.einsum("ik,ikl->il", E[: n + 1, :][::-1, :], self.kernel[: n + 1, :, :])
-            memory[n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
-            # memory[n] = -1 * to_integrate.sum() * dt
-        # Only select self.trunc_ind points for the integration
-        for n in range(trunc_kernel, memory.shape[0]):
-            to_integrate = np.einsum("ik,ikl->il", E[n - trunc_kernel + 1 : n + 1, :][::-1, :], self.kernel[:trunc_kernel, :, :])
-            memory[n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
-            # memory[n] = -1 * to_integrate.sum() * dt
-        return time, xva["a"].data - force - memory, xva["a"].data, force, memory

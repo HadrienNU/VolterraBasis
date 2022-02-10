@@ -57,6 +57,8 @@ class Pos_gle_base(object):
 
         self.bkbkcorrw = None
         self.bkdxcorrw = None
+        self.dotbkdxcorrw = None
+        self.dotbkbkcorrw = None
         self.force_coeff = None
 
         self.rank_projection = False
@@ -406,7 +408,7 @@ class Pos_gle_base(object):
         E = self.basis_vector(xr.Dataset({"x": (["time", "dim_x"], np.asarray(x).reshape(-1, self.dim_x))}), compute_for="kernel")
         if self.rank_projection:
             E = np.einsum("kj,ijd->ikd", self.P_range, E)
-        return self.time, np.einsum("jkd,ikl->ijld", E, self.kernel)  # Return the kernal as array (time x nb of evalution point x dim_x x dim_x)
+        return self.time, np.einsum("jkd,ikl->ijld", E, self.kernel)  # Return the kernel as array (time x nb of evalution point x dim_x x dim_x)
 
 
 class Pos_gle(Pos_gle_base):
