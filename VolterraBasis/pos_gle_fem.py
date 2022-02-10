@@ -259,6 +259,10 @@ class Pos_gle_fem_base(Pos_gle_base):
 
         self.bkbkcorrw /= self.weightsum
         self.bkdxcorrw /= self.weightsum
+
+        if self.rank_projection:
+            self._set_range_projection(rank_tol)
+
         print(np.sort(np.linalg.eigvals(self.bkbkcorrw[0, :, :])))
         if self.saveall:
             np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(-1, self.N_basis_elt_kernel))

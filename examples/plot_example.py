@@ -30,6 +30,7 @@ for i in range(1, trj.shape[1]):
 Nsplines = 10
 mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), trunc=10, kT=1.0, saveall=False)
 # mymem = vb.Pos_gle(xva_list, bf.PolynomialFeatures(deg=1), trunc=10, kT=1.0, saveall=False)
+# mymem = vb.Pos_gle(xva_list, bf.LinearFeatures(), trunc=10, kT=1.0, saveall=False)
 print("Dimension of observable", mymem.dim_x)
 mymem.compute_mean_force()
 print(mymem.force_coeff)

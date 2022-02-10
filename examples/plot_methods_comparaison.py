@@ -35,12 +35,8 @@ mymem.compute_mean_force()
 harmonic_coeffs = -1 * mymem.force_coeff[0]
 # print(mymem.force_coeff)
 mymem.compute_corrs()
-mymem.compute_kernel()
-
 
 fig_kernel, axs = plt.subplots(1, 1)
-
-# #
 # # # Kernel plot
 axs.set_title("Memory kernel")
 axs.set_xscale("log")

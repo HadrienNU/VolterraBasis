@@ -112,6 +112,9 @@ class Pos_gle_overdamped(Pos_gle_base):
         self.dotbkdxcorrw /= self.weightsum
         self.dotbkbkcorrw /= self.weightsum
 
+        if self.rank_projection:
+            self._set_range_projection(rank_tol)
+
         if self.saveall:
             np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw)
             np.savetxt(self.prefix + self.corrsfile, self.bkbkcorrw.reshape(-1, self.N_basis_elt ** 2))

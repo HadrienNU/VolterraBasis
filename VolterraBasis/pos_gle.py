@@ -60,6 +60,7 @@ class Pos_gle_base(object):
         self.force_coeff = None
 
         self.rank_projection = False
+        self.P_range = None
 
         # Save trajectory properties
         if self.xva_list is None:
@@ -114,6 +115,38 @@ class Pos_gle_base(object):
 
         self.N_basis_elt = self.basis.n_output_features_
 
+    def _set_range_projection(self, rank_tol):
+        """
+        Set and perfom the projection onto the range of the basis for kernel
+        """
+        if self.verbose:
+            print("Projection on range space...")
+        # Check actual rank of the matrix
+        B0 = self.bkbkcorrw[0, :, :]
+        # Do SVD
+        U, S, V = np.linalg.svd(B0, compute_uv=True, hermitian=True)
+        # Compute rank from svd
+        if rank_tol is None:
+            rank_tol = S.max(axis=-1, keepdims=True) * max(B0.shape[-2:]) * np.finfo(S.dtype).eps
+        rank = np.count_nonzero(S > rank_tol, axis=-1)
+        # print(rank, U.shape, S.shape, V.shape)
+        if rank < self.N_basis_elt_kernel:
+            if rank != self.N_basis_elt_kernel - self.dim_x:
+                print("Warning: rank is different than expected. Current {}, Expected {}. Consider checking your basis or changing the tolerance".format(rank, self.N_basis_elt_kernel - self.dim_x))
+            elif rank == 0:
+                raise Exception("Rank of basis is null.")
+            # Construct projection
+            self.P_range = U[:, :rank].T  # # Save the matrix for future use, matrix is rank x N_basis_elt_kernel
+            self.bkbkcorrw = np.einsum("lj,ijk,mk->ilm", self.P_range, self.bkbkcorrw, self.P_range)
+            self.bkdxcorrw = np.einsum("kj,ijd->ikd", self.P_range, self.bkdxcorrw)
+            if self.dotbkdxcorrw is not None:
+                self.dotbkdxcorrw = np.einsum("kj,ijd->ikd", self.P_range, self.dotbkdxcorrw)
+            if self.dotbkbkcorrw is not None:
+                self.dotbkbkcorrw = np.einsum("lj,ijk,mk->ilm", self.P_range, self.dotbkbkcorrw, self.P_range)
+        else:
+            print("No projection onto the range of the basis performed as basis is not deficient.")
+            self.P_range = np.identity(self.N_basis_elt_kernel)
+
     def basis_vector(self, xva, compute_for="corrs"):
         """
         From one trajectory compute the basis element.
@@ -166,9 +199,16 @@ class Pos_gle_base(object):
             avg_gram += np.matmul(E.T, E) / self.weightsum
         self.force_coeff = np.matmul(np.linalg.inv(avg_gram), avg_disp)
 
-    def compute_corrs(self, large=False):
+    def compute_corrs(self, large=False, rank_tol=None):
         """
-        Compute correlation functions. When large is true, it use a slower way to compute correlation that is less demanding in memory
+        Compute correlation functions.
+
+        Parameters
+        ----------
+        large : bool, default=False
+            When large is true, it use a slower way to compute correlation that is less demanding in memory
+        rank_tol: float, default=None
+            Tolerance for rank computation in case of projection onto the range of the basis
         """
         if self.verbose:
             print("Calculate correlation functions...")
@@ -217,13 +257,16 @@ class Pos_gle_base(object):
         self.dotbkdxcorrw /= self.weightsum
         self.dotbkbkcorrw /= self.weightsum
 
+        if self.rank_projection:
+            self._set_range_projection(rank_tol)
+
         if self.saveall:
             np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(-1, self.N_basis_elt_kernel * self.dim_x))
             np.savetxt(self.prefix + self.corrsfile, self.bkbkcorrw.reshape(-1, self.N_basis_elt_kernel ** 2))
             np.savetxt(self.prefix + self.dcorrsdxfile, self.dotbkdxcorrw.reshape(-1, self.N_basis_elt_kernel * self.dim_x))
             np.savetxt(self.prefix + self.dcorrsfile, self.dotbkbkcorrw.reshape(-1, self.N_basis_elt_kernel ** 2))
 
-    def compute_kernel(self, method="rectangular", k0=None, rank_tol=1e-10):
+    def compute_kernel(self, method="rectangular", k0=None):
         """
         Computes the memory kernel.
 
@@ -234,7 +277,7 @@ class Pos_gle_base(object):
         k0 : float, default=0.
             If you give a nonzero value for k0, this is used at time zero for the trapz and second kind method. If set to None,
             the F-routine will calculate k0 from the second kind memory equation.
-        rank_tol: float, default=1e-10
+        rank_tol: float, default=None
             Tolerance for rank computation in case of projection onto the range of the basis
         """
         if self.bkbkcorrw is None or self.bkdxcorrw is None:
@@ -246,24 +289,6 @@ class Pos_gle_base(object):
         self.method = method  # Save used method
         if self.verbose:
             print("Use dt:", dt)
-        if self.rank_projection:
-            print("Projection on rank space.")
-            # Check actual rank of the matrix
-            B0 = self.bkbkcorrw[0, :, :]
-            rank = np.linalg.matrix_rank(B0, tol=rank_tol)
-            if rank < self.N_basis_elt_kernel:
-                if rank != self.N_basis_elt_kernel - self.dim_x:
-                    print("Warning: rank is different than expected. Current {}, Expected {}. Consider checking your basis or changing the tolerance".format(rank, self.N_basis_elt_kernel - self.dim_x))
-                elif rank == 0:
-                    raise Exception("Rank of basis is null.")
-                P_range = np.matmul(B0, np.linal.pinv(B0))
-                self.bkbkcorrw = np.einsum("lj,ijk,mk->ikm", P_range, self.bkbkcorrw, P_range)
-                self.bkdxcorrw = np.einsum("kj,ijd->ikd", P_range, self.bkdxcorrw)
-                self.dotbkdxcorrw = np.einsum("kj,ijd->ikd", P_range, self.dotbkdxcorrw)
-                self.dotbkbkcorrw = np.einsum("lj,ijk,mk->ikm", P_range, self.dotbkbkcorrw, P_range)
-                raise NotImplementedError
-            else:
-                print("No projection onto the range of the basis performed as basis is not defective.")
 
         if k0 is None and method in ["trapz", "second_kind"]:  # Then we should compute initial value from time derivative at zero
             if self.dotbkdxcorrw is None:
@@ -338,6 +363,8 @@ class Pos_gle_base(object):
         if self.kernel is None:
             raise Exception("Kernel has not been computed.")
         E = self.basis_vector(xr.Dataset({"x": (["time", "dim_x"], np.asarray(x).reshape(-1, self.dim_x))}), compute_for="kernel")
+        if self.rank_projection:
+            E = np.einsum("kj,ijd->ikd", self.P_range, E)
         return self.time, np.einsum("jkd,ikl->ijld", E, self.kernel)  # Return the kernal as array (time x nb of evalution point x dim_x x dim_x)
 
 
@@ -421,6 +448,8 @@ class Pos_gle(Pos_gle_base):
         time = xva["time"].data
         dt = time[1] - time[0]
         E_force, E, _ = self.basis_vector(xva)
+        if self.rank_projection:
+            E = np.einsum("kj,ij->ik", self.P_range, E)
         force = np.matmul(E_force, self.force_coeff)
         memory = np.zeros(force.shape)
         if self.method == "trapz":
