@@ -581,3 +581,37 @@ class Pos_gle_const_kernel(Pos_gle_base):
             return bk, xva["v"].data, xva["a"].data
         else:
             raise ValueError("Basis evaluation goal not specified")
+
+
+class Pos_gle_hybrid(Pos_gle_base):
+    """
+    Implement the hybrid projector of arXiv:2202.01922
+    """
+
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
+        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
+        self.N_basis_elt_force = self.N_basis_elt
+        self.N_basis_elt_kernel = self.N_basis_elt + 1
+        if self.basis.const_removed:
+            self.basis.const_removed = False
+            print("Warning: remove_const on basis function have been set to False.")
+
+    def basis_vector(self, xva, compute_for="corrs"):
+        """
+        From one trajectory compute the basis element.
+        """
+        # We have to deal with the multidimensionnal case as well
+        bk = self.basis.basis(xva["x"].data)
+        if compute_for == "force":
+            return bk
+        elif compute_for == "kernel":
+            # Extend the basis for multidim value
+            E = np.concatenate((np.ones_like(xva["x"].data), bk), axis=1)
+            return E.reshape(-1, self.N_basis_elt_kernel, 1)
+        elif compute_for == "corrs":
+            E = np.concatenate((xva["v"].data, bk), axis=1)
+            dbk = np.einsum("nld,nd->nl", self.basis.deriv(xva["x"].data), xva["v"].data)
+            dE = np.concatenate((xva["a"].data, dbk), axis=1)
+            return bk, E, dE
+        else:
+            raise ValueError("Basis evaluation goal not specified")

@@ -28,7 +28,7 @@ for i in range(1, trj.shape[1]):
     xva_list.append(xvaf)
 
 Nsplines = 10
-mymem = vb.Pos_gle_const_kernel(xva_list, bf.BSplineFeatures(Nsplines, remove_const=True), trunc=10, kT=1.0, saveall=False)
+mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines, remove_const=True), trunc=10, kT=1.0, saveall=False)
 # mymem = vb.Pos_gle(xva_list, bf.PolynomialFeatures(deg=1), trunc=10, kT=1.0, saveall=False)
 # mymem = vb.Pos_gle(xva_list, bf.LinearFeatures(), trunc=10, kT=1.0, saveall=False)
 print("Dimension of observable", mymem.dim_x)
