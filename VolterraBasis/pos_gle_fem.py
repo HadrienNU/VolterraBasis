@@ -166,9 +166,32 @@ class Pos_gle_fem_base(Pos_gle_base):
                 E, dofs = self.basis_vector(grouped_xva, elem=k, compute_for="force")  # To check xva[xva["elem"] == k]
                 # print(temp_gram.shape, avg_gram[dofs[:, None], dofs[None, :]].shape)
                 avg_gram[dofs[:, None], dofs[None, :]] += np.einsum("ijk,ilk->jl", E, E) / self.weightsum
-                avg_disp[dofs] += np.einsum("ijk,ik->j", E, xva.where(xva["elem"] == k, drop=True)["a"].data) / self.weightsum  # Change to einsum to use vectorial value of E
+                avg_disp[dofs] += np.einsum("ijk,ik->j", E, grouped_xva["a"].data) / self.weightsum  # Change to einsum to use vectorial value of E
         self.invgram = self.kT * np.linalg.pinv(avg_gram)
         self.force_coeff = np.matmul(np.linalg.inv(avg_gram), avg_disp)
+
+    def compute_pmf(self, scalar_basis):
+        """
+        Compute the pmf via \int p(x) v(x) dx (eqivalent to the histogram but with finite element basis)
+        TODO: Inclure cette fonction dans une classe "equilibre" tel qu'on calcule la force à partir des coeffs du potentiel
+        Dans ce cas il faut aussi calculer la mtrice de masse sur la base puisque que pour calculer le coeff de force on en a besoin
+        """
+        if self.verbose:
+            print("Calculate mean force...")
+        avg_occ = np.zeros((self.N_basis_elt_force))
+        avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
+        for weight, xva in zip(self.weights, self.xva_list):
+            for k, grouped_xva in list(xva.groupby("elem")):
+                nb_points = grouped_xva.dims["time"]
+                u = np.zeros((nb_points, scalar_basis.Nbfun))  # Check dimension should we add self.dim_x?
+                dofs = np.zeros(scalar_basis.Nbfun, dtype=int)
+                loc_value_t = scalar_basis.mapping.invF(xva["x"].data.reshape(self.dim_x, 1, -1), tind=slice(k, k + 1))  # Reshape into dim * 1 element * nb of point
+                for i in range(scalar_basis.Nbfun):
+                    u[:, i] = scalar_basis.elem.gbasis(scalar_basis.mapping, loc_value_t[:, 0, :], i, tind=slice(k, k + 1))[0].value
+                    dofs[i] = scalar_basis.element_dofs[i, k]
+                avg_gram[dofs[:, None], dofs[None, :]] += np.einsum("ij,il->jl", u, u) / self.weightsum
+                avg_occ[dofs] += np.einsum("ij->j", u) / self.weightsum  # ???
+        self.potential_coeff = np.matmul(np.linalg.inv(avg_gram), avg_occ) / self.kT
 
     def compute_corrs(self, rank_tol=None):
         """

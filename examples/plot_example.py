@@ -3,10 +3,10 @@
 
 """
 ===========================
-Kernel Estimation
+Memory Kernel Estimation
 ===========================
 
-How to run kernel estimation
+How to run memory kernel estimation
 """
 
 import numpy as np
