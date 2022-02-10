@@ -18,6 +18,7 @@ class TensorialBasis2D(TransformerMixin):
             self.b2 = b1
         else:
             self.b2 = b2
+        self.const_removed = False  # Force rank projection
 
     def fit(self, X, y=None):
         self.b1.fit(X[:, slice(0, 1)])
@@ -30,13 +31,13 @@ class TensorialBasis2D(TransformerMixin):
         features = np.einsum("nk,nl->nkl", self.b1.basis(X[:, slice(0, 1)]), self.b2.basis(X[:, slice(1, 2)])).reshape(nsamples, -1)
         return features
 
-    def deriv(self, X, deriv_order=1, remove_const=False):
+    def deriv(self, X, deriv_order=1):
         if deriv_order == 2:
-            return self.hessian(X, remove_const=remove_const)
+            return self.hessian(X)
         nsamples, nfeatures = X.shape
-        temp_arr_1 = np.einsum("nk,nl...->nkl...", self.b1.basis(X[:, slice(0, 1)]), self.b2.deriv(X[:, slice(1, 2)], deriv_order=deriv_order, remove_const=remove_const))
+        temp_arr_1 = np.einsum("nk,nl...->nkl...", self.b1.basis(X[:, slice(0, 1)]), self.b2.deriv(X[:, slice(1, 2)], deriv_order=deriv_order))
         grad_1 = temp_arr_1.reshape(nsamples, -1, *temp_arr_1.shape[3:])
-        temp_arr_2 = np.einsum("nk...,nl->nkl...", self.b1.deriv(X[:, slice(0, 1)], deriv_order=deriv_order, remove_const=remove_const), self.b2.basis(X[:, slice(1, 2)]))
+        temp_arr_2 = np.einsum("nk...,nl->nkl...", self.b1.deriv(X[:, slice(0, 1)], deriv_order=deriv_order), self.b2.basis(X[:, slice(1, 2)]))
         grad_2 = temp_arr_2.reshape(nsamples, -1, *temp_arr_2.shape[3:])
         return np.concatenate((grad_1, grad_2), axis=-1)  # Il faudrait concatenate le long de la diagonal
 
@@ -111,6 +112,6 @@ if __name__ == "__main__":
     print("Basis")
     print(ten_basis.basis(x_range).shape)
     print("Deriv")
-    print(ten_basis.deriv(x_range, remove_const=True).shape)
+    print(ten_basis.deriv(x_range).shape)
     print("Hessian")
     print(ten_basis.hessian(x_range).shape)

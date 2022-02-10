@@ -25,7 +25,7 @@ class BSplineFeatures(TransformerMixin):
     B splines features
     """
 
-    def __init__(self, n_knots=5, k=3, periodic=False):
+    def __init__(self, n_knots=5, k=3, periodic=False, remove_const=True):
         """
         Parameters
         ----------
@@ -39,6 +39,7 @@ class BSplineFeatures(TransformerMixin):
         self.periodic = periodic
         self.k = k
         self.n_knots = n_knots  # knots are position along the axis of the knots
+        self.const_removed = remove_const
 
     def fit(self, X, y=None, knots=None):
         nsamples, dim = X.shape
@@ -59,9 +60,9 @@ class BSplineFeatures(TransformerMixin):
             features[:, istart:iend] = scipy.interpolate.splev(X, spline)
         return features
 
-    def deriv(self, X, deriv_order=1, remove_const=False):
+    def deriv(self, X, deriv_order=1):
         nsamples, dim = X.shape
-        with_const = int(remove_const)
+        with_const = int(self.const_removed)
         features = np.zeros((nsamples, dim * (self._nsplines - with_const)) + (dim,) * deriv_order)
         if self.k < deriv_order:
             return features
@@ -71,8 +72,8 @@ class BSplineFeatures(TransformerMixin):
                 features[(Ellipsis, slice(istart + i, istart + i + 1)) + (i,) * deriv_order] = scipy.interpolate.splev(X[:, slice(i, i + 1)], spline, der=deriv_order)
         return features
 
-    def hessian(self, X, remove_const=False):
-        return self.deriv(X, deriv_order=2, remove_const=remove_const)
+    def hessian(self, X):
+        return self.deriv(X, deriv_order=2)
 
 
 if __name__ == "__main__":
@@ -85,9 +86,9 @@ if __name__ == "__main__":
     print("Basis")
     print(basis.basis(x_range).shape)
     print("Deriv")
-    print(basis.deriv(x_range, remove_const=True).shape)
+    print(basis.deriv(x_range).shape)
     print("Hessian")
-    print(basis.hessian(x_range, remove_const=True).shape)
+    print(basis.hessian(x_range).shape)
 
     # Plot basis
     x_range = np.linspace(-2, 2, 50).reshape(-1, 1)

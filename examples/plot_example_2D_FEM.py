@@ -38,7 +38,7 @@ e = skfem.ElementVector(skfem.ElementTriP1())  # skfem.ElementTriRT0()  #
 basis = skfem.CellBasis(m, e)
 xvaf = vb.compute_element_location(xva, vb.ElementFinder(m))
 print(xvaf)
-mymem = vb.Pos_gle_fem([xvaf], basis, trunc=10, kT=1.0, with_const=False, saveall=False)
+mymem = vb.Pos_gle_fem([xvaf], basis, trunc=10, kT=1.0, saveall=False)
 print("Dimension of observable", mymem.dim_x)
 mymem.compute_mean_force()
 # print(mymem.force_coeff)

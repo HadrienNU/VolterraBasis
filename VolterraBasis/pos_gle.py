@@ -37,23 +37,15 @@ class Pos_gle_base(object):
         trunc : float, default=1.0
             Truncate all correlation functions and the memory kernel after this
             time value.
-        with_const : bool, default=False
-            Whatever the constant function is in the basis (to avoid inversion issue with the derivative).
         """
         self._do_check(xva_arg)  # Do some check on the trajectories
-        # print(callable(getattr(basis, "basis", None)), callable(getattr(basis, "deriv", None)))
-        if not (callable(getattr(basis, "basis", None))) or not (callable(getattr(basis, "deriv", None))):
-            raise Exception("Basis class do not define basis() or deriv() method")
-        self.basis = basis
-        if callable(getattr(self.basis, "fit", None)):
-            self.basis = self.basis.fit(np.concatenate([xva["x"].data for xva in self.xva_list], axis=0))  # Fit basis
-
-        self.N_basis_elt = self.basis.n_output_features_
-        # self.N_zeros_kernel = self.N_basis_elt - self.N_basis_elt_force + int(with_const)
+        self._check_basis(basis)  # Do check on basis
+        # Create all internal variables
         self.saveall = saveall
         self.prefix = prefix
         self.verbose = verbose
         self.kT = kT
+
         # filenames
         self.corrsfile = "corrs.txt"
         self.corrsdxfile = "a-u_corrs.txt"
@@ -67,6 +59,9 @@ class Pos_gle_base(object):
         self.bkdxcorrw = None
         self.force_coeff = None
 
+        self.rank_projection = False
+
+        # Save trajectory properties
         if self.xva_list is None:
             return
 
@@ -86,7 +81,6 @@ class Pos_gle_base(object):
                 print("Warning: Found a trajectory shorter than " "the argument trunc. Override.")
             trunc = smallest
         # Find index of the time truncation
-        print(trunc)
         self.trunc_ind = (self.xva_list[0]["time"] <= trunc).sum().data
         if self.verbose:
             print("Trajectories are truncated at lenght {} for dynamic analysis".format(self.trunc_ind))
@@ -107,6 +101,18 @@ class Pos_gle_base(object):
                     raise Exception("Timestep not in dataset attrs")
         else:
             self.xva_list = None
+
+    def _check_basis(self, basis):
+        """
+        Simple checks on the basis class
+        """
+        if not (callable(getattr(basis, "basis", None))) or not (callable(getattr(basis, "deriv", None))):
+            raise Exception("Basis class do not define basis() or deriv() method")
+        self.basis = basis
+        if callable(getattr(self.basis, "fit", None)):
+            self.basis = self.basis.fit(np.concatenate([xva["x"].data for xva in self.xva_list], axis=0))  # Fit basis
+
+        self.N_basis_elt = self.basis.n_output_features_
 
     def basis_vector(self, xva, compute_for="corrs"):
         """
@@ -177,10 +183,10 @@ class Pos_gle_base(object):
 
         for weight, xva in zip(self.weights, self.xva_list):
             E_force, E, dE = self.basis_vector(xva)
-            print(E_force.shape, E.shape, dE.shape)
+            # print(E_force.shape, E.shape, dE.shape)
             force = np.matmul(E_force, self.force_coeff)
-            print(force.shape, xva["a"].data.shape)
-            print(self.bkdxcorrw.shape, correlation_ND(E, (xva["a"].data - force)).shape)
+            # print(force.shape, xva["a"].data.shape)
+            # print(self.bkdxcorrw.shape, correlation_ND(E, (xva["a"].data - force)).shape)
             if not large:
                 try:
                     self.bkdxcorrw += weight * correlation_ND(E, (xva["a"].data - force), trunc=self.trunc_ind)
@@ -217,7 +223,7 @@ class Pos_gle_base(object):
             np.savetxt(self.prefix + self.dcorrsdxfile, self.dotbkdxcorrw.reshape(-1, self.N_basis_elt_kernel * self.dim_x))
             np.savetxt(self.prefix + self.dcorrsfile, self.dotbkbkcorrw.reshape(-1, self.N_basis_elt_kernel ** 2))
 
-    def compute_kernel(self, method="rectangular", k0=None):
+    def compute_kernel(self, method="rectangular", k0=None, rank_tol=1e-10):
         """
         Computes the memory kernel.
 
@@ -228,6 +234,8 @@ class Pos_gle_base(object):
         k0 : float, default=0.
             If you give a nonzero value for k0, this is used at time zero for the trapz and second kind method. If set to None,
             the F-routine will calculate k0 from the second kind memory equation.
+        rank_tol: float, default=1e-10
+            Tolerance for rank computation in case of projection onto the range of the basis
         """
         if self.bkbkcorrw is None or self.bkdxcorrw is None:
             raise Exception("Need correlation functions to compute the kernel.")
@@ -238,6 +246,25 @@ class Pos_gle_base(object):
         self.method = method  # Save used method
         if self.verbose:
             print("Use dt:", dt)
+        if self.rank_projection:
+            print("Projection on rank space.")
+            # Check actual rank of the matrix
+            B0 = self.bkbkcorrw[0, :, :]
+            rank = np.linalg.matrix_rank(B0, tol=rank_tol)
+            if rank < self.N_basis_elt_kernel:
+                if rank != self.N_basis_elt_kernel - self.dim_x:
+                    print("Warning: rank is different than expected. Current {}, Expected {}. Consider checking your basis or changing the tolerance".format(rank, self.N_basis_elt_kernel - self.dim_x))
+                elif rank == 0:
+                    raise Exception("Rank of basis is null.")
+                P_range = np.matmul(B0, np.linal.pinv(B0))
+                self.bkbkcorrw = np.einsum("lj,ijk,mk->ikm", P_range, self.bkbkcorrw, P_range)
+                self.bkdxcorrw = np.einsum("kj,ijd->ikd", P_range, self.bkdxcorrw)
+                self.dotbkdxcorrw = np.einsum("kj,ijd->ikd", P_range, self.dotbkdxcorrw)
+                self.dotbkbkcorrw = np.einsum("lj,ijk,mk->ikm", P_range, self.dotbkbkcorrw, P_range)
+                raise NotImplementedError
+            else:
+                print("No projection onto the range of the basis performed as basis is not defective.")
+
         if k0 is None and method in ["trapz", "second_kind"]:  # Then we should compute initial value from time derivative at zero
             if self.dotbkdxcorrw is None:
                 raise Exception("Need correlation with derivative functions to compute the kernel using this method or provide initial value.")
@@ -269,7 +296,7 @@ class Pos_gle_base(object):
             raise Exception("Method for volterra inversion is not in  {rectangular, midpoint, midpoint_w_richardson,trapz,second_kind}")
 
         if self.saveall:
-            np.savetxt(self.prefix + self.kernelfile, np.hstack((self.time, self.kernel.reshape(-1, self.N_basis_elt_kernel * self.dim_x))))
+            np.savetxt(self.prefix + self.kernelfile, np.hstack((self.time, self.kernel.reshape(self.kernel.shape[0], -1))))
 
         return self.kernel
 
@@ -320,7 +347,7 @@ class Pos_gle(Pos_gle_base):
     holding all data and the extracted memory kernels.
     """
 
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
         """
         Create an instance of the Pos_gle class.
 
@@ -345,13 +372,11 @@ class Pos_gle(Pos_gle_base):
         trunc : float, default=1.0
             Truncate all correlation functions and the memory kernel after this
             time value.
-        with_const : bool, default=False
-            Whatever the constant function is in the basis (to avoid inversion issue with the derivative).
         """
         Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
         self.N_basis_elt_force = self.N_basis_elt
-        self.N_basis_elt_kernel = self.N_basis_elt - int(with_const) * self.dim_x
-        self.remove_const_ = bool(with_const)
+        self.N_basis_elt_kernel = self.N_basis_elt - int(self.basis.const_removed) * self.dim_x
+        self.rank_projection = not self.basis.const_removed
 
     def basis_vector(self, xva, compute_for="corrs"):
         """
@@ -363,11 +388,11 @@ class Pos_gle(Pos_gle_base):
         #     bk = np.concatenate((np.ones((bk.shape[0], 1)), bk), axis=1)
         if compute_for == "force":
             return bk
-        dbk = self.basis.deriv(xva["x"].data, remove_const=self.remove_const_)
+        dbk = self.basis.deriv(xva["x"].data)
         if compute_for == "kernel":  # For kernel evaluation
             return dbk
         elif compute_for == "corrs":
-            ddbk = self.basis.hessian(xva["x"].data, remove_const=self.remove_const_)
+            ddbk = self.basis.hessian(xva["x"].data)
             E = np.einsum("nld,nd->nl", dbk, xva["v"].data)
             # E = np.multiply(dbk, xva["v"].data)
             dE = np.einsum("nld,nd->nl", dbk, xva["a"].data) + np.einsum("nlcd,nc,nd->nl", ddbk, xva["v"].data, xva["v"].data)
@@ -421,11 +446,11 @@ class Pos_gle_with_friction(Pos_gle_base):
     A derived class in which we don't enforce zero friction
     """
 
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
         Pos_gle.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
-        self.N_basis_elt_force = 2 * self.N_basis_elt
-        self.N_basis_elt_kernel = self.N_basis_elt - int(with_const) * self.dim_x
-        self.remove_const_ = bool(with_const)
+        self.N_basis_elt_force = 2 * self.N_basis_elt - int(self.basis.const_removed) * self.dim_x
+        self.N_basis_elt_kernel = self.N_basis_elt - int(self.basis.const_removed) * self.dim_x
+        self.rank_projection = not self.basis.const_removed
 
     def basis_vector(self, xva, compute_for="corrs"):
         """
@@ -435,7 +460,7 @@ class Pos_gle_with_friction(Pos_gle_base):
         bk = self.basis.basis(xva["x"].data)
         if compute_for == "force_eval":
             return bk
-        dbk = self.basis.deriv(xva["x"].data, remove_const=self.remove_const_)
+        dbk = self.basis.deriv(xva["x"].data)
         if compute_for == "kernel":  # To have the term proportional to velocity
             return dbk
         Evel = np.multiply(dbk, xva["v"].data)
@@ -443,7 +468,7 @@ class Pos_gle_with_friction(Pos_gle_base):
         if compute_for == "force":
             return E
         elif compute_for == "corrs":
-            ddbk = self.basis.hessian(xva["x"].data, remove_const=self.remove_const_)
+            ddbk = self.basis.hessian(xva["x"].data)
             dE = np.multiply(dbk, xva["a"].data) + np.multiply(ddbk, np.power(xva["v"].data, 2))
             return E, Evel, dE
         else:
@@ -470,7 +495,7 @@ class Pos_gle_no_vel_basis(Pos_gle_base):
     A derived class in which we don't enforce the zero values
     """
 
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
         Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt
@@ -496,7 +521,7 @@ class Pos_gle_const_kernel(Pos_gle_base):
     A derived class in which we the kernel is set independant of the position
     """
 
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
         Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = 1

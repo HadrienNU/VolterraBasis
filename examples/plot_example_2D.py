@@ -33,9 +33,9 @@ xva_list.append(xvaf)
 
 Nsplines = 5
 
-# mymem = vb.Pos_gle(xva_list, bf.TensorialBasis2D(bf.BSplineFeatures(Nsplines)), trunc=10, kT=1.0, with_const=False, saveall=False)
-mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), trunc=10, kT=1.0, with_const=False, saveall=False)
-# mymem = vb.Pos_gle(xva_list, bf.TensorialBasis2D(bf.LinearFeatures()), trunc=10, kT=1.0, with_const=False, saveall=False)
+# mymem = vb.Pos_gle(xva_list, bf.TensorialBasis2D(bf.BSplineFeatures(Nsplines)), trunc=10, kT=1.0, saveall=False)
+mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), trunc=10, kT=1.0, saveall=False)
+# mymem = vb.Pos_gle(xva_list, bf.TensorialBasis2D(bf.LinearFeatures()), trunc=10, kT=1.0,saveall=False)
 print("Dimension of observable", mymem.dim_x)
 mymem.compute_mean_force()
 # print(mymem.force_coeff)

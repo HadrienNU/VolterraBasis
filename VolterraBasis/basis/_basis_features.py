@@ -17,6 +17,7 @@ class LinearFeatures(TransformerMixin):
     def __init__(self, to_center=False):
         """"""
         self.centered = to_center
+        self.const_removed = False
 
     def fit(self, X, y=None):
         self.n_output_features_ = X.shape[1]
@@ -43,12 +44,16 @@ class LinearFeatures(TransformerMixin):
 
 class PolynomialFeatures(TransformerMixin):
     """
-    Wrapper for numpy polynomial series removing the constant polynom
+    Wrapper for numpy polynomial series.
     """
 
-    def __init__(self, deg=1, polynom=np.polynomial.Polynomial):
+    def __init__(self, deg=1, polynom=np.polynomial.Polynomial, remove_const=True):
+        """
+        Providing a numpy polynomial class via polynom keyword allow to change polynomial type.
+        """
         self.degree = deg + 1
         self.polynom = polynom
+        self.const_removed = remove_const
 
     def fit(self, X, y=None):
         self.n_output_features_ = X.shape[1] * self.degree
@@ -63,9 +68,9 @@ class PolynomialFeatures(TransformerMixin):
             features[:, istart:iend] = self.polynom.basis(n)(X)
         return features
 
-    def deriv(self, X, deriv_order=1, remove_const=False):
+    def deriv(self, X, deriv_order=1):
         nsamples, dim = X.shape
-        with_const = int(remove_const)
+        with_const = int(self.const_removed)
         features = np.zeros((nsamples, dim * (self.degree - with_const)) + (dim,) * deriv_order)
         for n in range(with_const, self.degree):
             istart = (n - with_const) * dim
@@ -73,8 +78,11 @@ class PolynomialFeatures(TransformerMixin):
                 features[(Ellipsis, slice(istart + i, istart + i + 1)) + (i,) * deriv_order] = self.polynom.basis(n).deriv(deriv_order)(X[:, slice(i, i + 1)])
         return features
 
-    def hessian(self, X, remove_const=False):
-        return self.deriv(X, deriv_order=2, remove_const=remove_const)
+    def hessian(self, X):
+        return self.deriv(X, deriv_order=2)
+
+
+# TODO: Implement Fourier Series
 
 
 class SplineFctFeatures(TransformerMixin):
@@ -87,6 +95,7 @@ class SplineFctFeatures(TransformerMixin):
         self.k = k
         self.t = knots  # knots are position along the axis of the knots
         self.c = coeffs
+        self.const_removed = False
 
     def fit(self, X, y=None):
         nsamples, dim = X.shape
@@ -97,15 +106,15 @@ class SplineFctFeatures(TransformerMixin):
     def basis(self, X):
         return self.spl(X)
 
-    def deriv(self, X, deriv_order=1, remove_const=False):
+    def deriv(self, X, deriv_order=1):
         nsamples, dim = X.shape
         grad = np.zeros((nsamples, dim) + (dim,) * deriv_order)
         for i in range(dim):
             grad[(Ellipsis, slice(i, i + 1)) + (i,) * (deriv_order)] = self.spl.derivative(deriv_order)(X[:, slice(i, i + 1)])
         return grad
 
-    def hessian(self, X, remove_const=False):
-        return self.deriv(X, deriv_order=2, remove_const=remove_const)
+    def hessian(self, X):
+        return self.deriv(X, deriv_order=2)
 
     def antiderivative(self, X, order=1):
         return self.spl.antiderivative(order)(X)
@@ -114,6 +123,7 @@ class SplineFctFeatures(TransformerMixin):
 class FeaturesCombiner(TransformerMixin):
     def __init__(self, *basis):
         self.basis_set = basis
+        self.const_removed = np.any([b.const_removed for b in self.basis_set])  # Check if one of the basis set have the constant removed
 
     def fit(self, X, y=None):
         for b in self.basis_set:
@@ -127,15 +137,15 @@ class FeaturesCombiner(TransformerMixin):
             features = np.concatenate((features, b.basis(X)), axis=1)
         return features
 
-    def deriv(self, X, deriv_order=1, remove_const=False):
-        grad = self.basis_set[0].deriv(X, deriv_order=deriv_order, remove_const=remove_const)
+    def deriv(self, X, deriv_order=1):
+        grad = self.basis_set[0].deriv(X, deriv_order=deriv_order)
         for b in self.basis_set[1:]:
-            print(grad.shape, b.deriv(X, deriv_order=deriv_order, remove_const=remove_const).shape)
-            features = np.concatenate((grad, b.deriv(X, deriv_order=deriv_order, remove_const=remove_const)), axis=1)
+            # print(grad.shape, b.deriv(X, deriv_order=deriv_order).shape)
+            features = np.concatenate((grad, b.deriv(X, deriv_order=deriv_order)), axis=1)
         return features
 
-    def hessian(self, X, remove_const=False):
-        return self.deriv(X, deriv_order=2, remove_const=remove_const)
+    def hessian(self, X):
+        return self.deriv(X, deriv_order=2)
 
 
 # class SplineFctWithLinFeatures(TransformerMixin):
@@ -186,7 +196,7 @@ if __name__ == "__main__":
     print(basis.basis(x_range).shape)
     print("Deriv")
     print(basis.deriv(x_range).shape)
-    print(basis.deriv(x_range, remove_const=True)[0, :, :])
+    print(basis.deriv(x_range)[0, :, :])
     # print("Hessian")
     # print(basis.hessian(x_range).shape)
 

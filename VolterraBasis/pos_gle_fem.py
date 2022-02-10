@@ -113,55 +113,8 @@ class Pos_gle_fem_base(Pos_gle_base):
         trunc : float, default=1.0
             Truncate all correlation functions and the memory kernel after this
             time value.
-        with_const : bool, default=False
-            Whatever the constant function is in the basis (to avoid inversion issue with the derivative).
         """
-        self._do_check(xva_arg)  # Do some check on the trajectories
-        self.basis = basis
-        self.N_basis_elt = self.basis.N
-
-        self.saveall = saveall
-        self.prefix = prefix
-        self.verbose = verbose
-        self.kT = kT
-        # filenames
-        self.corrsfile = "corrs.txt"
-        self.corrsdxfile = "a-u_corrs.txt"
-        self.dcorrsfile = "dE_corrs.txt"
-        self.dcorrsdxfile = "dE_a-u_corrs.txt"
-        self.interpfefile = "interp-fe.txt"
-        self.histfile = "fe-hist.txt"
-        self.kernelfile = "kernel.txt"
-
-        self.bkbkcorrw = None
-        self.bkdxcorrw = None
-        self.force_coeff = None
-
-        if self.xva_list is None:
-            return
-
-        self.dim_x = self.xva_list[0].dims["dim_x"]
-
-        if self.dim_x != self.basis.elem.dim:
-            raise ValueError("Dimension of element different of dimension of the observable")
-
-        # processing input arguments
-        self.weights = np.array([xva["time"].shape[0] for xva in self.xva_list], dtype=int)  # Should be the various lenght of trajectory
-        self.weightsum = np.sum(self.weights)
-        if self.verbose:
-            print("Found trajectories with the following lengths:")
-            print(self.weights)
-
-        lastinds = np.array([xva["time"][-1] for xva in self.xva_list])
-        smallest = np.min(lastinds)
-        if smallest < trunc:
-            if self.verbose:
-                print("Warning: Found a trajectory shorter than " "the argument trunc. Override.")
-            trunc = smallest
-        # Find index of the time truncation
-        self.trunc_ind = (self.xva_list[0]["time"] <= trunc).sum().data
-        if self.verbose:
-            print("Trajectories are truncated at lenght {} for dynamic analysis".format(self.trunc_ind))
+        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
 
     def _do_check(self, xva_arg):
         if xva_arg is not None:
@@ -181,6 +134,13 @@ class Pos_gle_fem_base(Pos_gle_base):
                     raise Exception("Timestep not in dataset attrs")
         else:
             self.xva_list = None
+
+    def _check_basis(self, basis):
+        """
+        Simple checks on the basis class
+        """
+        self.basis = basis
+        self.N_basis_elt = self.basis.N
 
     def basis_vector(self, xva, elem, compute_for="corrs"):
         """
@@ -329,7 +289,7 @@ class Pos_gle_fem(Pos_gle_fem_base):
     holding all data and the extracted memory kernels.
     """
 
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, with_const=False):
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
         """
         Create an instance of the Pos_gle class.
 
@@ -354,13 +314,11 @@ class Pos_gle_fem(Pos_gle_fem_base):
         trunc : float, default=1.0
             Truncate all correlation functions and the memory kernel after this
             time value.
-        with_const : bool, default=False
-            Whatever the constant function is in the basis (to avoid inversion issue with the derivative).
         """
         Pos_gle_fem_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
         self.N_basis_elt_force = self.N_basis_elt
-        self.N_basis_elt_kernel = self.N_basis_elt - int(with_const) * self.dim_x
-        self.remove_const_ = bool(with_const)
+        self.N_basis_elt_kernel = self.N_basis_elt
+        self.rank_projection = True
 
     def basis_vector(self, xva, elem, compute_for="corrs"):
         """
@@ -380,8 +338,6 @@ class Pos_gle_fem(Pos_gle_fem_base):
             # dbk via grad?
             dbk[:, i, :, :] = phi_field[0].grad.reshape(-1, self.dim_x, self.dim_x)
             dofs[i] = self.basis.element_dofs[i, elem]
-        # if self.include_const:
-        #     bk = np.concatenate((np.ones((bk.shape[0], 1)), bk), axis=1)
         if compute_for == "force":
             return bk, dofs
         if compute_for == "kernel":  # For kernel evaluation
