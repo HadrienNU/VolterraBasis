@@ -82,7 +82,66 @@ class PolynomialFeatures(TransformerMixin):
         return self.deriv(X, deriv_order=2)
 
 
-# TODO: Implement Fourier Series
+class FourierFeatures(TransformerMixin):
+    """
+    Fourier series.
+    """
+
+    def __init__(self, order=1, freq=1.0, remove_const=True):
+        """
+        Providing a numpy polynomial class via polynom keyword allow to change polynomial type.
+        """
+        self.order = 2 * order + 1
+        self.freq = freq
+        self.const_removed = remove_const
+
+    def fit(self, X, y=None):
+        self.n_output_features_ = X.shape[1] * self.order
+        return self
+
+    def basis(self, X):
+        nsamples, dim = X.shape
+        features = np.zeros((nsamples, dim * self.order))
+        for n in range(0, self.order):
+            istart = n * dim
+            iend = (n + 1) * dim
+            if n == 0:
+                features[:, istart:iend] = np.ones_like(X) / np.sqrt(2 * np.pi)
+            elif n % 2 == 0:
+                print(n / 2)
+                features[:, istart:iend] = np.cos(n / 2 * X * self.freq) / np.sqrt(np.pi)
+            else:
+                print((n + 1) / 2)
+                features[:, istart:iend] = np.sin((n + 1) / 2 * X * self.freq) / np.sqrt(np.pi)
+        return features
+
+    def deriv(self, X, deriv_order=1):
+        if deriv_order == 2:
+            return self.hessian(X)
+        nsamples, dim = X.shape
+        with_const = int(self.const_removed)
+        features = np.zeros((nsamples, dim * (self.order - with_const)) + (dim,) * deriv_order)
+        for n in range(with_const, self.order):
+            istart = (n - with_const) * dim
+            for i in range(dim):
+                if n % 2 == 0:
+                    features[(Ellipsis, slice(istart + i, istart + i + 1)) + (i,) * deriv_order] = -n / 2 * self.freq * np.sin(n / 2 * self.freq * X[:, slice(i, i + 1)]) / np.sqrt(np.pi)
+                else:
+                    features[(Ellipsis, slice(istart + i, istart + i + 1)) + (i,) * deriv_order] = (n + 1) / 2 * self.freq * np.cos((n + 1) / 2 * self.freq * X[:, slice(i, i + 1)]) / np.sqrt(np.pi)
+        return features
+
+    def hessian(self, X):
+        nsamples, dim = X.shape
+        with_const = int(self.const_removed)
+        features = np.zeros((nsamples, dim * (self.order - with_const)) + (dim,) * 2)
+        for n in range(with_const, self.order):
+            istart = (n - with_const) * dim
+            for i in range(dim):
+                if n % 2 == 0:
+                    features[(Ellipsis, slice(istart + i, istart + i + 1)) + (i,) * 2] = -(((n / 2) * self.freq) ** 2) * np.cos(n / 2 * self.freq * X[:, slice(i, i + 1)]) / np.sqrt(np.pi)
+                else:
+                    features[(Ellipsis, slice(istart + i, istart + i + 1)) + (i,) * 2] = -(((n + 1) / 2 * self.freq) ** 2) * np.sin((n + 1) / 2 * self.freq * X[:, slice(i, i + 1)]) / np.sqrt(np.pi)
+        return features
 
 
 class SplineFctFeatures(TransformerMixin):
@@ -186,10 +245,10 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     x_range = np.linspace(-10, 10, 30).reshape(-1, 2)
-    b2 = LinearFeatures()
-    # basis = PolynomialFeatures(deg=3)
-    b1 = SplineFctFeatures(knots=np.linspace(-1, 1, 8), coeffs=np.logspace(1, 2, 8), k=2)
-    basis = FeaturesCombiner(b1, b2)
+    # b2 = LinearFeatures()
+    basis = FourierFeatures(order=3, freq=1.0)
+    # b1 = SplineFctFeatures(knots=np.linspace(-1, 1, 8), coeffs=np.logspace(1, 2, 8), k=2)
+    # basis = FeaturesCombiner(b1, b2)
     basis.fit(x_range)
     print(x_range.shape)
     print("Basis")
@@ -197,8 +256,8 @@ if __name__ == "__main__":
     print("Deriv")
     print(basis.deriv(x_range).shape)
     print(basis.deriv(x_range)[0, :, :])
-    # print("Hessian")
-    # print(basis.hessian(x_range).shape)
+    print("Hessian")
+    print(basis.hessian(x_range).shape)
 
     # Plot basis
     x_range = np.linspace(-2, 2, 50).reshape(-1, 1)
