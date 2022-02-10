@@ -347,6 +347,47 @@ class Pos_gle_base(object):
         #     res_int += np.einsum("jk,ik->ij", self.bkbkcorrw[0, :, :], self.kernel)
         return time - time[0], res_int
 
+    def compute_noise(self, xva, trunc_kernel=None):
+        """
+        From a trajectory get the noise.
+
+        Parameters
+        ----------
+        xva : xarray dataset (['time', 'x', 'v', 'a']) .
+            Use compute_va() or see its output for format details.
+            Input trajectory to compute noise.
+        trunc_kernel : int
+                Number of datapoint of the kernel to consider.
+                Can be used to remove unphysical divergence of the kernel or shortten execution time.
+        """
+        if self.force_coeff is None:
+            raise Exception("Mean force has not been computed.")
+        if trunc_kernel is None:
+            trunc_kernel = self.trunc_ind
+        time = xva["time"].data
+        dt = time[1] - time[0]
+        E_force, E, _ = self.basis_vector(xva)
+        if self.rank_projection:
+            E = np.einsum("kj,ij->ik", self.P_range, E)
+        force = np.matmul(E_force, self.force_coeff)
+        memory = np.zeros(force.shape)
+        if self.method == "trapz":
+            trunc_kernel -= 1
+        elif self.method in ["midpoint", "midpoint_w_richardson"]:
+            raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
+        # else:
+        #     pass
+        for n in range(trunc_kernel):
+            to_integrate = np.einsum("ik,ikl->il", E[: n + 1, :][::-1, :], self.kernel[: n + 1, :, :])
+            memory[n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
+            # memory[n] = -1 * to_integrate.sum() * dt
+        # Only select self.trunc_ind points for the integration
+        for n in range(trunc_kernel, memory.shape[0]):
+            to_integrate = np.einsum("ik,ikl->il", E[n - trunc_kernel + 1 : n + 1, :][::-1, :], self.kernel[:trunc_kernel, :, :])
+            memory[n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
+            # memory[n] = -1 * to_integrate.sum() * dt
+        return time, xva["a"].data - force - memory, xva["a"].data, force, memory
+
     def dU(self, x):
         """
         Evaluate the force at given points x
@@ -421,53 +462,10 @@ class Pos_gle(Pos_gle_base):
         elif compute_for == "corrs":
             ddbk = self.basis.hessian(xva["x"].data)
             E = np.einsum("nld,nd->nl", dbk, xva["v"].data)
-            # E = np.multiply(dbk, xva["v"].data)
             dE = np.einsum("nld,nd->nl", dbk, xva["a"].data) + np.einsum("nlcd,nc,nd->nl", ddbk, xva["v"].data, xva["v"].data)
-            # dE = np.multiply(dbk, xva["a"].data) + np.multiply(ddbk, np.power(xva["v"].data, 2))
             return bk, E, dE
         else:
             raise ValueError("Basis evaluation goal not specified")
-
-    def compute_noise(self, xva, trunc_kernel=None):
-        """
-        From a trajectory get the noise.
-
-        Parameters
-        ----------
-        xva : xarray dataset (['time', 'x', 'v', 'a']) .
-            Use compute_va() or see its output for format details.
-            Input trajectory to compute noise.
-        trunc_kernel : int
-                Number of datapoint of the kernel to consider.
-                Can be used to remove unphysical divergence of the kernel or shortten execution time.
-        """
-        if self.force_coeff is None:
-            raise Exception("Mean force has not been computed.")
-        if trunc_kernel is None:
-            trunc_kernel = self.trunc_ind
-        time = xva["time"].data
-        dt = time[1] - time[0]
-        E_force, E, _ = self.basis_vector(xva)
-        if self.rank_projection:
-            E = np.einsum("kj,ij->ik", self.P_range, E)
-        force = np.matmul(E_force, self.force_coeff)
-        memory = np.zeros(force.shape)
-        if self.method == "trapz":
-            trunc_kernel -= 1
-        elif self.method in ["midpoint", "midpoint_w_richardson"]:
-            raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
-        # else:
-        #     pass
-        for n in range(trunc_kernel):
-            to_integrate = np.einsum("ik,ikl->il", E[: n + 1, :][::-1, :], self.kernel[: n + 1, :, :])
-            memory[n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
-            # memory[n] = -1 * to_integrate.sum() * dt
-        # Only select self.trunc_ind points for the integration
-        for n in range(trunc_kernel, memory.shape[0]):
-            to_integrate = np.einsum("ik,ikl->il", E[n - trunc_kernel + 1 : n + 1, :][::-1, :], self.kernel[:trunc_kernel, :, :])
-            memory[n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
-            # memory[n] = -1 * to_integrate.sum() * dt
-        return time, xva["a"].data - force - memory, xva["a"].data, force, memory
 
 
 class Pos_gle_with_friction(Pos_gle_base):
@@ -492,13 +490,14 @@ class Pos_gle_with_friction(Pos_gle_base):
         dbk = self.basis.deriv(xva["x"].data)
         if compute_for == "kernel":  # To have the term proportional to velocity
             return dbk
-        Evel = np.multiply(dbk, xva["v"].data)
+
+        Evel = np.einsum("nld,nd->nl", dbk, xva["v"].data)
         E = np.concatenate((bk, Evel), axis=1)
         if compute_for == "force":
             return E
         elif compute_for == "corrs":
             ddbk = self.basis.hessian(xva["x"].data)
-            dE = np.multiply(dbk, xva["a"].data) + np.multiply(ddbk, np.power(xva["v"].data, 2))
+            dE = np.einsum("nld,nd->nl", dbk, xva["a"].data) + np.einsum("nlcd,nc,nd->nl", ddbk, xva["v"].data, xva["v"].data)
             return E, Evel, dE
         else:
             raise ValueError("Basis evaluation goal not specified")
@@ -507,7 +506,7 @@ class Pos_gle_with_friction(Pos_gle_base):
         if self.force_coeff is None:
             raise Exception("Mean force has not been computed.")
         E = self.basis_vector(xr.Dataset({"x": (["time", "dim_x"], np.asarray(x).reshape(-1, self.dim_x))}), compute_for="force_eval")
-        return -1 * np.matmul(self.force_coeff[: self.N_basis_elt], E.T)
+        return -1 * np.einsum("ik,kl->il", E, self.force_coeff[: self.N_basis_elt])  # -1 * np.matmul(self.force_coeff[: self.N_basis_elt, :], E.T)
 
     def friction_force(self, x):
         """
@@ -516,7 +515,7 @@ class Pos_gle_with_friction(Pos_gle_base):
         if self.force_coeff is None:
             raise Exception("Mean force has not been computed.")
         E = self.basis_vector(xr.Dataset({"x": (["time", "dim_x"], np.asarray(x).reshape(-1, self.dim_x))}), compute_for="kernel")
-        return np.matmul(self.force_coeff[self.N_basis_elt :], E.T)
+        return np.einsum("ikd,kl->ild", E, self.force_coeff[self.N_basis_elt :])  # np.matmul(self.force_coeff[self.N_basis_elt :, :], E.T)
 
 
 class Pos_gle_no_vel_basis(Pos_gle_base):
@@ -528,6 +527,9 @@ class Pos_gle_no_vel_basis(Pos_gle_base):
         Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt
+        if self.basis.const_removed:
+            self.basis.const_removed = False
+            print("Warning: remove_const on basis function have been set to False.")
 
     def basis_vector(self, xva, compute_for="corrs"):
         """
@@ -535,11 +537,14 @@ class Pos_gle_no_vel_basis(Pos_gle_base):
         """
         # We have to deal with the multidimensionnal case as well
         E = self.basis.basis(xva["x"].data)
-        if compute_for == "force" or compute_for == "kernel":
+        if compute_for == "force":
             return E
+        elif compute_for == "kernel":
+            # Extend the basis for multidim value
+            return E.reshape(-1, self.N_basis_elt_kernel, 1)
         elif compute_for == "corrs":
             dbk = self.basis.deriv(xva["x"].data)
-            dE = np.multiply(dbk, xva["v"].data)
+            dE = np.einsum("nld,nd->nl", dbk, xva["v"].data)
             return E, E, dE
         else:
             raise ValueError("Basis evaluation goal not specified")
@@ -566,7 +571,10 @@ class Pos_gle_const_kernel(Pos_gle_base):
         if compute_for == "force":
             return bk
         if compute_for == "kernel":  # For kernel evaluation
-            return np.ones_like(xva["x"].data)
+            grad = np.zeros((bk.shape[0], self.dim_x, self.dim_x))
+            for i in range(self.dim_x):
+                grad[:, i, i] = 1.0
+            return grad
         elif compute_for == "corrs":
             return bk, xva["v"].data, xva["a"].data
         else:

@@ -18,7 +18,10 @@ class TensorialBasis2D(TransformerMixin):
             self.b2 = b1
         else:
             self.b2 = b2
-        self.const_removed = False  # Force rank projection
+        # Force rank projection
+        self.b1.const_removed = False
+        self.b2.const_removed = False
+        self.const_removed = False
 
     def fit(self, X, y=None):
         self.b1.fit(X[:, slice(0, 1)])
@@ -41,15 +44,15 @@ class TensorialBasis2D(TransformerMixin):
         grad_2 = temp_arr_2.reshape(nsamples, -1, *temp_arr_2.shape[3:])
         return np.concatenate((grad_1, grad_2), axis=-1)  # Il faudrait concatenate le long de la diagonal
 
-    def hessian(self, X, remove_const=False):
+    def hessian(self, X):
         nsamples, nfeatures = X.shape
-        temp_arr_1 = np.einsum("nk,nl...->nkl...", self.b1.basis(X[:, slice(0, 1)]), self.b2.hessian(X[:, slice(1, 2)], remove_const=remove_const))
+        temp_arr_1 = np.einsum("nk,nl...->nkl...", self.b1.basis(X[:, slice(0, 1)]), self.b2.hessian(X[:, slice(1, 2)]))
         hess_1 = temp_arr_1.reshape(nsamples, -1, *temp_arr_1.shape[3:])
-        temp_arr_cross = np.einsum("nkd,nlf->nkldf", self.b1.deriv(X[:, slice(0, 1)]), self.b2.deriv(X[:, slice(1, 2)], remove_const=remove_const))
+        temp_arr_cross = np.einsum("nkd,nlf->nkldf", self.b1.deriv(X[:, slice(0, 1)]), self.b2.deriv(X[:, slice(1, 2)]))
         hess_cross = temp_arr_cross.reshape(nsamples, -1, *temp_arr_cross.shape[3:])
-        temp_arr_2 = np.einsum("nk...,nl->nkl...", self.b1.hessian(X[:, slice(0, 1)], remove_const=remove_const), self.b2.basis(X[:, slice(1, 2)]))
+        temp_arr_2 = np.einsum("nk...,nl->nkl...", self.b1.hessian(X[:, slice(0, 1)]), self.b2.basis(X[:, slice(1, 2)]))
         hess_2 = temp_arr_2.reshape(nsamples, -1, *temp_arr_2.shape[3:])
-        # print(hess_1.shape, hess_cross.shape, hess_2.shape)
+        print(hess_1.shape, hess_cross.shape, hess_2.shape)
         return np.concatenate((np.concatenate((hess_1, hess_cross), axis=-2), np.concatenate((hess_cross, hess_2), axis=-2)), axis=-1)  # Il faudrait concatenate le long de la diagonal
 
 
@@ -78,15 +81,15 @@ class TensorialBasis2D(TransformerMixin):
 #             features = np.einsum("nk,nl->nkl", features, b.basis(X[:, slice(i, i + 1)])).reshape(nsamples, -1)
 #         return features
 #
-#     def deriv(self, X, deriv_order=1, remove_const=False):
+#     def deriv(self, X, deriv_order=1):
 #         nsamples, nfeatures = X.shape
 #         features = self.basis_set[0].basis(X[:, slice(0, 1)])  # (ntimes x nb features)
-#         grad = self.basis_set[0].deriv(X[:, slice(0, 1)], remove_const=remove_const)  # (ntimes x nb features x 1) ->  (ntimes x nb features x dim_x)
+#         grad = self.basis_set[0].deriv(X[:, slice(0, 1)])  # (ntimes x nb features x 1) ->  (ntimes x nb features x dim_x)
 #         # grad = np.concatenate([np.kron(f1.grad, f2.value[np.newaxis, :, :]), np.kron(f1.value[np.newaxis, :, :], f2.grad)], axis=0)
 #         for i, b in enumerate(self.basis_set[1:]):
 #             # On doit multiplier grad à gauche par ba_f et ajouter une line qui est features (avant kronecker product x grad)
 #             ba_f = b.basis(X[:, slice(i, i + 1)])
-#             grad_f = self.basis_set[0].deriv(X[:, slice(i, i + 1)], remove_const=remove_const)
+#             grad_f = self.basis_set[0].deriv(X[:, slice(i, i + 1)])
 #
 #             grad = np.einsum("nkl,nj-> nkjl", grad, ba_f)
 #             # On ajoute ensuite
@@ -97,8 +100,8 @@ class TensorialBasis2D(TransformerMixin):
 #
 #         return grad
 #
-#     def hessian(self, X, remove_const=False):
-#         return self.deriv(X, deriv_order=2, remove_const=remove_const)
+#     def hessian(self, X):
+#         return self.deriv(X, deriv_order=2)
 
 
 if __name__ == "__main__":

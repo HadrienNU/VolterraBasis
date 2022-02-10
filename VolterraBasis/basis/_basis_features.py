@@ -30,7 +30,7 @@ class LinearFeatures(TransformerMixin):
     def basis(self, X):
         return X - self.mean_
 
-    def deriv(self, X, deriv_order=1, remove_const=True):
+    def deriv(self, X, deriv_order=1):
         nsamples, dim = X.shape
         grad = np.zeros((nsamples, dim) + (dim,) * deriv_order)
         if deriv_order == 1:
@@ -38,8 +38,8 @@ class LinearFeatures(TransformerMixin):
                 grad[:, i, i] = 1.0
         return grad
 
-    def hessian(self, X, remove_const=True):
-        return self.deriv(X, deriv_order=2, remove_const=remove_const)
+    def hessian(self, X):
+        return self.deriv(X, deriv_order=2)
 
 
 class PolynomialFeatures(TransformerMixin):
@@ -168,15 +168,15 @@ class FeaturesCombiner(TransformerMixin):
 #     def basis(self, X):
 #         return np.concatenate((X, self.spl(X)), axis=1)
 #
-#     def deriv(self, X, deriv_order=1, remove_const=False):
+#     def deriv(self, X, deriv_order=1):
 #         if deriv_order == 1:
 #             lin_deriv = np.ones_like(X)
 #         else:
 #             lin_deriv = np.zeros_like(X)
 #         return np.concatenate((lin_deriv, self.spl.derivative(deriv_order)(X)), axis=1)
 #
-#     def hessian(self, X, remove_const=False):
-#         return self.deriv(X, deriv_order=2, remove_const=remove_const)
+#     def hessian(self, X):
+#         return self.deriv(X, deriv_order=2)
 #
 #     def antiderivative(self, X, order=1):
 #         return self.spl.antiderivative(order)(X)

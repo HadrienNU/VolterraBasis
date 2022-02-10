@@ -199,9 +199,14 @@ class Pos_gle_fem_base(Pos_gle_base):
         self.invgram = self.kT * np.linalg.pinv(avg_gram)
         self.force_coeff = np.matmul(np.linalg.inv(avg_gram), avg_disp)
 
-    def compute_corrs(self):
+    def compute_corrs(self, rank_tol=None):
         """
-        Compute correlation functions. When large is true, it use a slower way to compute correlation that is less demanding in memory
+        Compute correlation functions.
+
+        Parameters
+        ----------
+        rank_tol: float, default=None
+            Tolerance for rank computation in case of projection onto the range of the basis
         """
         if self.verbose:
             print("Calculate correlation functions...")
@@ -358,8 +363,9 @@ class Pos_gle_fem(Pos_gle_fem_base):
 
         Parameters
         ----------
-        xva : xarray dataset (['time', 'x', 'v', 'a']) .
+        xva : xarray dataset (['time', 'x', 'v', 'a', 'elem']) .
             Use compute_va() or see its output for format details.
+            You should have run compute_element_location() on it.
             Input trajectory to compute noise.
         trunc_kernel : int
                 Number of datapoint of the kernel to consider.

@@ -12,9 +12,9 @@ How to run kernel estimation
 import numpy as np
 import matplotlib.pyplot as plt
 
-import sys
-
-sys.path.insert(0, "../")  # To use local version of the library, remove when installed
+# import sys
+#
+# sys.path.insert(0, "../")  # To use local version of the library, remove when installed
 
 import VolterraBasis as vb
 import VolterraBasis.basis as bf
@@ -33,9 +33,8 @@ xva_list.append(xvaf)
 
 Nsplines = 5
 
-# mymem = vb.Pos_gle(xva_list, bf.TensorialBasis2D(bf.BSplineFeatures(Nsplines)), trunc=10, kT=1.0, saveall=False)
-mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), trunc=10, kT=1.0, saveall=False)
-# mymem = vb.Pos_gle(xva_list, bf.TensorialBasis2D(bf.LinearFeatures()), trunc=10, kT=1.0,saveall=False)
+# mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), trunc=10, kT=1.0, saveall=False)
+mymem = vb.Pos_gle(xva_list, bf.TensorialBasis2D(bf.PolynomialFeatures(deg=1)), trunc=10, kT=1.0, saveall=False)
 print("Dimension of observable", mymem.dim_x)
 mymem.compute_mean_force()
 # print(mymem.force_coeff)

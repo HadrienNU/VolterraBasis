@@ -17,6 +17,9 @@ class Pos_gle_overdamped(Pos_gle_base):
         Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt
+        if self.basis.const_removed:
+            self.basis.const_removed = False
+            print("Warning: remove_const on basis function have been set to False.")
 
     def _do_check(self, xva_arg):
         if xva_arg is not None:
@@ -41,11 +44,14 @@ class Pos_gle_overdamped(Pos_gle_base):
         """
         # We have to deal with the multidimensionnal case as well
         E = self.basis.basis(xva["x"].data)
-        if compute_for == "force" or compute_for == "kernel":
+        if compute_for == "force":
             return E
+        elif compute_for == "kernel":
+            # Extend the basis for multidim value
+            return E.reshape(-1, self.N_basis_elt_kernel, 1)
         elif compute_for == "corrs":
             dbk = self.basis.deriv(xva["x"].data)
-            dE = np.multiply(dbk, xva["v"].data)
+            dE = np.einsum("nld,nd->nl", dbk, xva["v"].data)
             return E, E, dE
         else:
             raise ValueError("Basis evaluation goal not specified")
@@ -64,9 +70,16 @@ class Pos_gle_overdamped(Pos_gle_base):
             avg_gram += np.matmul(E.T, E) / self.weightsum
         self.force_coeff = np.matmul(np.linalg.inv(avg_gram), avg_disp)
 
-    def compute_corrs(self, large=False):
+    def compute_corrs(self, large=False, rank_tol=None):
         """
         Compute correlation functions.
+
+        Parameters
+        ----------
+        large : bool, default=False
+            When large is true, it use a slower way to compute correlation that is less demanding in memory
+        rank_tol: float, default=None
+            Tolerance for rank computation in case of projection onto the range of the basis
         """
         if self.verbose:
             print("Calculate correlation functions...")
