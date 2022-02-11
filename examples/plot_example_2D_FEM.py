@@ -10,35 +10,6 @@ How to run kernel estimation
 """
 
 
-def integrate_vector_field(force_coeffs, basis_from, basis_to):
-    """
-    Find phi such that \nabla \phi = force
-    Basis_from should be a vectorial one and basis_to a scalar one
-    """
-    from skfem import BilinearForm, solve_linear
-
-    @BilinearForm
-    def mass(u, v, w):
-        from skfem.helpers import dot
-
-        return dot(u, v.grad)
-
-    @BilinearForm
-    def deriv(u, v, w):
-        from skfem.helpers import dot
-
-        return dot(u.grad, v.grad)
-
-    # On a pas le même nombre de coeffs dans basis_to et from,
-    grad_part = deriv.assemble(basis_to)
-    print(grad_part.shape)
-    print(mass.assemble(basis_from, basis_to).shape)
-    mass_force = -1 * mass.assemble(basis_from, basis_to) @ force_coeffs
-    print(mass_force.shape)
-
-    return solve_linear(grad_part, mass_force)
-
-
 import numpy as np
 import matplotlib.pyplot as plt
 import skfem
@@ -75,7 +46,7 @@ print("Force coeff shape", mymem.force_coeff.shape, mymem.force_coeff[basis.noda
 force = mymem.force_coeff[basis.nodal_dofs].T
 
 basis_pot = skfem.CellBasis(m, skfem.ElementTriP1())
-potential = integrate_vector_field(mymem.force_coeff, basis, basis_pot)
+potential = mymem.integrate_vector_field(basis_pot)
 # Calculer le pmf aussi par intégration et le tracer également
 # Faire ces calculs en 1D également
 

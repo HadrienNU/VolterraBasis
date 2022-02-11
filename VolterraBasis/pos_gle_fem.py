@@ -2,6 +2,8 @@ import numpy as np
 import xarray as xr
 from scipy.integrate import trapezoid
 from skfem.assembly.basis import Basis
+from skfem import LinearForm, BilinearForm, solve_linear
+from skfem.helpers import dot
 from scipy.spatial import cKDTree
 
 from .pos_gle import Pos_gle_base
@@ -170,28 +172,54 @@ class Pos_gle_fem_base(Pos_gle_base):
         self.invgram = self.kT * np.linalg.pinv(avg_gram)
         self.force_coeff = np.matmul(np.linalg.inv(avg_gram), avg_disp)
 
+    def integrate_vector_field(self, scalar_basis):
+        """
+        Find phi such that \nabla phi = force
+        Parameters
+        ----------
+        scalar_basis: skfem basis
+            Should be a scalar basis with the same quadrature point than internal basis
+        """
+        # if self.mass is None:
+        #     raise Exception("Effective mass has not been computed.")
+        if self.verbose:
+            print("Integrate force to get potential of mean force...")
+        mass = BilinearForm(lambda u, v, w: dot(u, v.grad))
+        deriv = BilinearForm(lambda u, v, w: dot(u.grad, v.grad))
+
+        grad_part = deriv.assemble(scalar_basis)
+        mass_force = -1 * mass.assemble(self.basis, scalar_basis) @ self.force_coeff
+        return solve_linear(grad_part, mass_force)  # TODO: remove effective mass
+
     def compute_pmf(self, scalar_basis):
         """
-        Compute the pmf via \int p(x) v(x) dx (eqivalent to the histogram but with finite element basis)
+        Compute the pmf via int p(x) v(x) dx (eqivalent to the histogram but with finite element basis)
         TODO: Inclure cette fonction dans une classe "equilibre" tel qu'on calcule la force à partir des coeffs du potentiel
-        Dans ce cas il faut aussi calculer la mtrice de masse sur la base puisque que pour calculer le coeff de force on en a besoin
+        Dans ce cas il faut aussi calculer la matrice de masse sur la base puisque que pour calculer le coeff de force on en a besoin
         """
         if self.verbose:
-            print("Calculate mean force...")
+            print("Calculate potential of mean force...")
         avg_occ = np.zeros((self.N_basis_elt_force))
-        avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
+        # avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
         for weight, xva in zip(self.weights, self.xva_list):
             for k, grouped_xva in list(xva.groupby("elem")):
                 nb_points = grouped_xva.dims["time"]
                 u = np.zeros((nb_points, scalar_basis.Nbfun))  # Check dimension should we add self.dim_x?
                 dofs = np.zeros(scalar_basis.Nbfun, dtype=int)
-                loc_value_t = scalar_basis.mapping.invF(xva["x"].data.reshape(self.dim_x, 1, -1), tind=slice(k, k + 1))  # Reshape into dim * 1 element * nb of point
+                loc_value_t = scalar_basis.mapping.invF(grouped_xva["x"].data.reshape(self.dim_x, 1, -1), tind=slice(k, k + 1))  # Reshape into dim * 1 element * nb of point
                 for i in range(scalar_basis.Nbfun):
                     u[:, i] = scalar_basis.elem.gbasis(scalar_basis.mapping, loc_value_t[:, 0, :], i, tind=slice(k, k + 1))[0].value
                     dofs[i] = scalar_basis.element_dofs[i, k]
-                avg_gram[dofs[:, None], dofs[None, :]] += np.einsum("ij,il->jl", u, u) / self.weightsum
+                # avg_gram[dofs[:, None], dofs[None, :]] += np.einsum("ij,il->jl", u, u) / self.weightsum
                 avg_occ[dofs] += np.einsum("ij->j", u) / self.weightsum  # ???
-        self.potential_coeff = np.matmul(np.linalg.inv(avg_gram), avg_occ) / self.kT
+
+        mass = BilinearForm(lambda u, v, w: u * v).assemble(scalar_basis)
+
+        self.hist_coeff = solve_linear(mass, avg_occ)
+        # Projection of the log of the histogram on the basis
+        log_hist = LinearForm(lambda u, w: u * (-1 * (np.log(w.pf) - np.max(np.log(w.pf))))).assemble(scalar_basis, pf=scalar_basis.interpolate(self.hist_coeff))
+        # self.potential_coeff = scalar_basis.project(DiscreteField(value=np.log(scalar_basis.interpolate(self.hist_coeff).value)))
+        self.potential_coeff = solve_linear(mass, log_hist)
 
     def compute_corrs(self, rank_tol=None):
         """
@@ -227,34 +255,18 @@ class Pos_gle_fem_base(Pos_gle_base):
                 E_force, E, _, dofs = self.basis_vector(grouped_xva, elem=k)  # Ca doit sortir un array masqué et on
                 # print(E_force.shape, E.shape)
                 a_m_force = grouped_xva["a"].data - np.einsum("ijk,j->ik", E_force, self.force_coeff[dofs])
-                # print(a_m_force.shape, grouped_xva["time"])
                 inds = np.array(group_inds[k])  # Obtenir les indices du groupe
-                # print(inds)
                 for n in range(self.trunc_ind):  # # On peut prange ce for avec numba
                     E_shift = E[slice(None, None if n == 0 else -n), :, :]  # slice(None,None if n==0 else -n) shift(E, [-n, 0, 0])
-                    # print(E_shift.shape)
                     prodbkdx = np.einsum("ijk,ik->ij", E_shift, a_m_force[n:, :])  # On peut virer la fin des array
                     prodbkbk = np.einsum("ijk,ilk->ijl", E_shift, E[n:, :, :])
-                    # print(prodbkdx.shape, prodbkbk.shape)
-                    # print("Affectation")
                     loc_inds = inds[n:] - inds[slice(None, None if n == 0 else -n)]
-                    # print(loc_inds.shape)
                     for k, loc_ind in enumerate(loc_inds):
                         # C'est un peu un groupby on voudrait prodbkdx.groub_by((shift(inds, n, cval=np.NaN) - inds).sum(axis=0) -> comme ça on a des valeurs unique, ensuite on enlève tout ce qui est  > self.trunc_inds
-                        # print(loc_ind)
                         # Only consider loc_inds < self.trunc_inds
                         if loc_ind < self.trunc_ind:
                             self.bkbkcorrw[loc_ind, dofs[:, None], dofs[None, :]] += prodbkbk[k]
                             self.bkdxcorrw[loc_ind, dofs, 0] += prodbkdx[k]
-
-                # Trouver un moyen de faire efficacement la correlation
-                # frE = np.fft.fft(E, n=2 ** int(np.ceil((np.log(a.shape[0]) / np.log(2))) + 1), axis=0)
-                # fra = np.fft.fft(xva.where(xva["elem"] == k, drop=True)["a"].data - force, n=2 ** int(np.ceil((np.log(a.shape[0]) / np.log(2))) + 1), axis=0)
-                # sfbkdx = np.conj(frE)[..., np.newaxis] * fra[:, np.newaxis, ...]  # Il faut multiply le long de la bonne ligne mais on a un produit scalaire le long des dim_x
-                # self.bkdxcorrw += weight * correlation_ND(E, (a_m_force), trunc=self.trunc_ind)  # Change correlation ND to use vectorial value of E and xva["a"]
-                # self.bkbkcorrw += weight * correlation_ND(E, trunc=self.trunc_ind)
-                # self.bkbkcorrw[dofs[:, None], dofs[None, :]] += /self.weightsum
-                # self.bkdxcorrw [:,dofs] += / self.weightsum
 
         self.bkbkcorrw /= self.weightsum
         self.bkdxcorrw /= self.weightsum
@@ -262,7 +274,6 @@ class Pos_gle_fem_base(Pos_gle_base):
         if self.rank_projection:
             self._set_range_projection(rank_tol)
 
-        # print(np.sort(np.linalg.eigvals(self.bkbkcorrw[0, :, :])))
         if self.saveall:
             np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(-1, self.N_basis_elt_kernel))
             np.savetxt(self.prefix + self.corrsfile, self.bkbkcorrw.reshape(-1, self.N_basis_elt_kernel ** 2))
@@ -362,7 +373,6 @@ class Pos_gle_fem_base(Pos_gle_base):
         for k, grouped_xva in list(loc_groups):
             E, dofs = self.basis_vector(grouped_xva, elem=k, compute_for="kernel")
             inds = np.array(group_inds[k])
-            print(E.shape, self.kernel[:, dofs, :].shape)
             output_kernel[:, inds, :, :] = np.einsum("jkdf,ik->ijdf", E, self.kernel[:, dofs, 0])
         return self.time, output_kernel  # Return the kernel as array (time x nb of evalution point x dim_x x dim_x)
 
@@ -373,7 +383,7 @@ class Pos_gle_fem(Pos_gle_fem_base):
     holding all data and the extracted memory kernels.
     """
 
-    def __init__(self, xva_arg, basis, element_finder, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
+    def __init__(self, xva_arg, basis: Basis, element_finder, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
         """
         Create an instance of the Pos_gle class.
 
@@ -414,13 +424,9 @@ class Pos_gle_fem(Pos_gle_fem_base):
         dofs = np.zeros(self.basis.Nbfun, dtype=int)
         loc_value_t = self.basis.mapping.invF(xva["x"].data.reshape(self.dim_x, 1, -1), tind=slice(elem, elem + 1))  # Reshape into dim * 1 element * nb of point
         for i in range(self.basis.Nbfun):
-            # To use global basis fct instead (probably more general)
-            # phi_tp = ubasis.elem.gbasis(ubasis.mapping, loc_value_tp[:, 0, :], j, tind=slice(m, m + 1)).value
-            # Check to use gbasis instead
             phi_field = self.basis.elem.gbasis(self.basis.mapping, loc_value_t[:, 0, :], i, tind=slice(elem, elem + 1))
             bk[:, i, :] = phi_field[0].value.reshape(-1, self.dim_x)  # The middle indice is the choice of element, ie only one choice here
-            # dbk via grad?
-            dbk[:, i, :, :] = phi_field[0].grad.reshape(-1, self.dim_x, self.dim_x)
+            dbk[:, i, :, :] = phi_field[0].grad.reshape(-1, self.dim_x, self.dim_x)  # dbk via div?
             dofs[i] = self.basis.element_dofs[i, elem]
         if compute_for == "force":
             return bk, dofs
