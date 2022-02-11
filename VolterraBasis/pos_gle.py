@@ -554,7 +554,7 @@ class Pos_gle_no_vel_basis(Pos_gle_base):
 
 class Pos_gle_const_kernel(Pos_gle_base):
     """
-    A derived class in which we the kernel is set independant of the position
+    A derived class in which we the kernel is computed independent of the position
     """
 
     def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):

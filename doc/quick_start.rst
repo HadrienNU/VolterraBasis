@@ -33,7 +33,9 @@ Choice of the form of the GLE
 -----------------------------
 
 Several options are available to choose the form of the GLE:
+
 * :class:`VolterraBasis.Pos_gle` implement the form of the GLE featured in Vroylandt and Monmarché with memory kernel linear in velocity.
 * :class:`VolterraBasis.Pos_gle_with_friction` is similar to the previous but don't assume that the instantaneous friction is zero.
+* :class:`VolterraBasis.Pos_gle_const_kernel`  is the traditionnal GLE with memory kernel linear in velocity and independant of position.
 * :class:`VolterraBasis.Pos_gle_no_vel_basis`  implement a GLE where the memory kernel has no dependance in velocity.
 * :class:`VolterraBasis.Pos_gle_overdamped` compute the memory kernel for an overdamped dynamics.

@@ -9,8 +9,7 @@ from .pos_gle import Pos_gle_base
 
 class Pos_gle_overdamped(Pos_gle_base):
     """
-    The main class for the position dependent memory extraction,
-    holding all data and the extracted memory kernels.
+    Extraction of position dependent memory kernel for overdamped dynamics.
     """
 
     def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
