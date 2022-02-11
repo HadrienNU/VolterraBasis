@@ -180,6 +180,10 @@ class SplineFctFeatures(TransformerMixin):
 
 
 class FeaturesCombiner(TransformerMixin):
+    """
+    Allow to combine features to build composite basis
+    """
+
     def __init__(self, *basis):
         self.basis_set = basis
         self.const_removed = np.any([b.const_removed for b in self.basis_set])  # Check if one of the basis set have the constant removed
