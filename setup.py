@@ -21,7 +21,7 @@ with open(ver_file) as f:
 VERSION = __version__
 
 
-INSTALL_REQUIRES = ["numpy>=1.15", "xarray>=0.20", "scipy>=1.7"]
+INSTALL_REQUIRES = ["numpy>=1.15", "xarray>=0.20", "scipy>=1.7", "scikit-fem>=4.0"]
 EXTRAS_REQUIRE = {"docs": ["sphinx", "sphinx-gallery", "sphinx_rtd_theme", "numpydoc", "matplotlib"]}
 ext_modules = [Extension(name="VolterraBasis.fkernel", sources=["VolterraBasis/fkernel.f90"], libraries=["lapack"])]
 
