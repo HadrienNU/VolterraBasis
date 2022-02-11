@@ -1,10 +1,12 @@
 import numpy as np
 import xarray as xr
+from ._version import __version__
 
 from .pos_gle import Pos_gle, Pos_gle_with_friction, Pos_gle_no_vel_basis, Pos_gle_const_kernel
 from .pos_gle_overdamped import Pos_gle_overdamped
 from .correlation import correlation1D as correlation
 from . import basis
+
 
 __all__ = ["Pos_gle", "Pos_gle_with_friction", "Pos_gle_no_vel_basis", "Pos_gle_const_kernel", "Pos_gle_overdamped", "correlation"]
 
