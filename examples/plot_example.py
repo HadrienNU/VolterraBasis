@@ -3,14 +3,19 @@
 
 """
 ===========================
-Kernel Estimation
+Memory Kernel Estimation
 ===========================
 
-How to run kernel estimation
+How to run memory kernel estimation
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
+
+import sys
+
+sys.path.insert(0, "../")  # To use local version of the library, remove when installed
+
 import VolterraBasis as vb
 import VolterraBasis.basis as bf
 
@@ -18,16 +23,17 @@ trj = np.loadtxt("example_lj.trj")
 xva_list = []
 print(trj.shape)
 for i in range(1, trj.shape[1]):
-    xf = vb.xframe(trj[:, i], trj[:, 0])
+    xf = vb.xframe(trj[:, i], trj[:, 0] - trj[0, 0])
     xvaf = vb.compute_va(xf)
     xva_list.append(xvaf)
 
 Nsplines = 10
-mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), Nsplines, trunc=10, kT=1.0, with_const=True, saveall=False)
-# mymem = vb.Pos_gle(xva_list, bf.LinearFeatures(), 1, trunc=10, kT=1.0, with_const=False, saveall=False)
+mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), trunc=10, kT=1.0, saveall=False)
+# mymem = vb.Pos_gle(xva_list, bf.PolynomialFeatures(deg=1), trunc=10, kT=1.0, saveall=False)
+# mymem = vb.Pos_gle(xva_list, bf.LinearFeatures(), trunc=10, kT=1.0, saveall=False)
 print("Dimension of observable", mymem.dim_x)
 mymem.compute_mean_force()
-print(mymem.force_coeff)
+# print(mymem.force_coeff)
 mymem.compute_corrs()
 mymem.compute_kernel(method="trapz")
 time, kernel = mymem.kernel_eval([1.5, 2.0, 2.5])
@@ -55,7 +61,7 @@ axs[1].set_xscale("log")
 axs[1].set_xlabel("$t$")
 axs[1].set_ylabel("$\\Gamma$")
 axs[1].grid()
-axs[1].plot(time, kernel[:, :, 0], "-x")
+axs[1].plot(time, kernel[:, :, 0, 0], "-x")
 
 # Noise plot
 axs[2].set_title("Noise")
