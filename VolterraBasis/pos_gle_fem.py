@@ -238,16 +238,6 @@ class Pos_gle_fem_base(Pos_gle_base):
         self.bkbkcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.N_basis_elt_kernel))
         self.bkdxcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, 1))  # ,1 -> To keep compatibility with fortran kernel code
 
-        # fra = np.fft.fft(a, n=2 ** int(np.ceil((np.log(a.shape[0]) / np.log(2))) + 1), axis=0)  # Do we need that big of an array?
-        # if b is None:
-        #     sf = np.conj(fra)[..., np.newaxis] * fra[:, np.newaxis, ...]
-        # else:
-        #     frb = np.fft.fft(b - meanb, n=2 ** int(np.ceil((np.log(len(b)) / np.log(2))) + 1), axis=0)
-        #     sf = np.conj(fra)[..., np.newaxis] * frb[:, np.newaxis, ...]
-        # res = np.fft.ifft(sf, axis=0)
-        # cor = np.real(res[: self.trunc_ind]) / np.arange(a.shape[0], a.shape[0] - self.trunc_ind, -1).reshape(-1, 1, 1)  # Normalisation de la moyenne, plus il y a d'écart entre les points moins il y a de points dans la moyenne
-        # return cor
-
         for weight, xva in zip(self.weights, self.xva_list):
             loc_groups = xva.groupby("elem")
             group_inds = xva.groupby("elem").groups
@@ -437,3 +427,73 @@ class Pos_gle_fem(Pos_gle_fem_base):
             return bk, E, None, dofs
         else:
             raise ValueError("Basis evaluation goal not specified")
+
+
+class Pos_gle_fem_equilibrium(Pos_gle_fem_base):
+    """
+    Class for computation of equilibrium systems.
+    """
+
+    def __init__(self, xva_arg, basis: Basis, element_finder, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
+        """
+        Create an instance of the Pos_gle_fem_equilibrium class.
+
+        Parameters
+        ----------
+        xva_arg : xarray dataset (['time', 'x', 'v', 'a']) or list of datasets.
+            Use compute_va() or see its output for format details.
+            The timeseries to analyze. It should be either a xarray timeseries
+            or a listlike collection of them.
+        basis :  scikitfem Basis class
+            The finite element basis
+        element_finder: ElementFinder class
+            An initialized ElementFinder class to locate element
+        saveall : bool, default=True
+            Whether to save all output functions.
+        prefix : str
+            Prefix for the saved output functions.
+        verbose : bool, default=True
+            Set verbosity.
+        kT : float, default=2.494
+            Numerical value for kT.
+        trunc : float, default=1.0
+            Truncate all correlation functions and the memory kernel after this
+            time value.
+        """
+        Pos_gle_fem_base.__init__(self, xva_arg, basis, element_finder, saveall, prefix, verbose, kT, trunc)
+        self.N_basis_elt_force = self.N_basis_elt
+        self.N_basis_elt_kernel = self.N_basis_elt
+        self.rank_projection = True
+        # Run some check on basis
+
+    def basis_vector(self, xva, elem, compute_for="corrs"):
+        """
+        TODO: Implement the basis using scalar Element
+        """
+        nb_points = xva.dims["time"]
+        bk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x))  # Check dimension should we add self.dim_x?
+        dbk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x, self.dim_x))  # Check dimension
+        dofs = np.zeros(self.basis.Nbfun, dtype=int)
+        loc_value_t = self.basis.mapping.invF(xva["x"].data.reshape(self.dim_x, 1, -1), tind=slice(elem, elem + 1))  # Reshape into dim * 1 element * nb of point
+        for i in range(self.basis.Nbfun):
+            phi_field = self.basis.elem.gbasis(self.basis.mapping, loc_value_t[:, 0, :], i, tind=slice(elem, elem + 1))
+            bk[:, i, :] = phi_field[0].value.reshape(-1, self.dim_x)  # The middle indice is the choice of element, ie only one choice here
+            dbk[:, i, :, :] = phi_field[0].grad.reshape(-1, self.dim_x, self.dim_x)  # dbk via div?
+            dofs[i] = self.basis.element_dofs[i, elem]
+        if compute_for == "force":
+            return bk, dofs
+        if compute_for == "kernel":  # For kernel evaluation
+            return dbk, dofs
+        elif compute_for == "corrs":
+            E = np.einsum("nlfd,nd->nlf", dbk, xva["v"].data)
+            return bk, E, None, dofs
+        else:
+            raise ValueError("Basis evaluation goal not specified")
+
+    def compute_mean_force_from_pmf(self):
+        """
+        Compute the mean force from the pmf
+        """
+        self.compute_pmf(self.basis)
+        self.compute_effective_masse()
+        self.force_coeff = self.mass @ self.potential_coeff

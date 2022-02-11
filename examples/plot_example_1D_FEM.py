@@ -12,8 +12,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import skfem
 from skfem.visuals.matplotlib import draw, plot
-from skfem import BilinearForm, solve_linear
-from skfem.helpers import dot
 import scipy.interpolate
 
 import sys
@@ -26,7 +24,7 @@ import VolterraBasis.basis as bf
 
 def compute_1d_fe(xva_list, bins="auto", hist=False):
     """
-    Computes the free energy from the trajectoy and prepares the cubic spline
+    Computes the free energy from the trajectoy using a cubic spline
     interpolation.
 
     Parameters
