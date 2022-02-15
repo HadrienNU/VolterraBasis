@@ -200,7 +200,7 @@ class Pos_gle_fem_base(Pos_gle_base):
         """
         if self.verbose:
             print("Calculate potential of mean force...")
-        avg_occ = np.zeros((self.N_basis_elt_force))
+        avg_occ = np.zeros((scalar_basis.N))
         # avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
         for weight, xva in zip(self.weights, self.xva_list):
             for k, grouped_xva in list(xva.groupby("elem")):
@@ -297,7 +297,7 @@ class Pos_gle_fem_base(Pos_gle_base):
 
         force = np.zeros(xva["x"].data.shape)
         memory = np.zeros(xva["x"].data.shape)
-        if ["elem"] not in xva.data_vars:
+        if "elem" not in xva.data_vars:
             xva.update({"elem": (["time"], self.element_finder.find(xva["x"].data))})
         loc_groups = xva.groupby("elem")
         group_inds = xva.groupby("elem").groups
