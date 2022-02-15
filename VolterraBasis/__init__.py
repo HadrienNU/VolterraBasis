@@ -88,3 +88,10 @@ def compute_va(xf, correct_jumps=False):
     xva = xf[["x"]].assign({"v": sdiffs["x"] / (2.0 * dt), "a": ddiffs["x"] / dt ** 2})
 
     return xva.dropna("time")
+
+
+def compute_element_location(xva, element_finder):
+    """
+    Get element from trajectory
+    """
+    return xva.update({"elem": (["time"], element_finder.find(xva["x"].data))})

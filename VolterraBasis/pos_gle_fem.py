@@ -106,7 +106,8 @@ class Pos_gle_fem_base(Pos_gle_base):
         Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
         self.element_finder = element_finder
         for xva in self.xva_list:
-            xva.update({"elem": (["time"], self.element_finder.find(xva["x"].data))})
+            if ["elem"] not in xva.data_vars:
+                xva.update({"elem": (["time"], self.element_finder.find(xva["x"].data))})
 
     def _check_basis(self, basis):
         """
@@ -170,7 +171,7 @@ class Pos_gle_fem_base(Pos_gle_base):
                 avg_gram[dofs[:, None], dofs[None, :]] += np.einsum("ijk,ilk->jl", E, E) / self.weightsum
                 avg_disp[dofs] += np.einsum("ijk,ik->j", E, grouped_xva["a"].data) / self.weightsum  # Change to einsum to use vectorial value of E
         self.invgram = self.kT * np.linalg.pinv(avg_gram)
-        self.force_coeff = np.matmul(np.linalg.inv(avg_gram), avg_disp)
+        self.force_coeff = np.matmul(np.linalg.pinv(avg_gram), avg_disp)
 
     def integrate_vector_field(self, scalar_basis):
         """
@@ -296,8 +297,8 @@ class Pos_gle_fem_base(Pos_gle_base):
 
         force = np.zeros(xva["x"].data.shape)
         memory = np.zeros(xva["x"].data.shape)
-
-        xva.update({"elem": (["time"], self.element_finder.find(xva["x"].data))})
+        if ["elem"] not in xva.data_vars:
+            xva.update({"elem": (["time"], self.element_finder.find(xva["x"].data))})
         loc_groups = xva.groupby("elem")
         group_inds = xva.groupby("elem").groups
         for k, grouped_xva in list(loc_groups):
