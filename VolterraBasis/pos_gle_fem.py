@@ -106,7 +106,7 @@ class Pos_gle_fem_base(Pos_gle_base):
         Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
         self.element_finder = element_finder
         for xva in self.xva_list:
-            if ["elem"] not in xva.data_vars:
+            if "elem" not in xva.data_vars:
                 xva.update({"elem": (["time"], self.element_finder.find(xva["x"].data))})
 
     def _check_basis(self, basis):
