@@ -24,6 +24,9 @@ class ElementFinder:
             self.bins = mesh.p[0, ix[0]]
             self.bins_idx = mesh.t[0]
             self.find = self.find_element_1D
+        elif self.dim == 2:
+            self.find = self.find_element_2D
+            self.mesh_finder = mesh.element_finder(mapping)
         else:
             self.tree = cKDTree(np.mean(mesh.p[:, mesh.t], axis=1).T)
             self.find = self.find_element_ND
@@ -40,6 +43,9 @@ class ElementFinder:
         maxix = X[:, 0] == self.max_point
         X[maxix, 0] = X[maxix, 0] - 1e-10  # special case in np.digitize
         return np.argmax((np.digitize(X[:, 0], self.bins) - 1)[:, None] == self.bins_idx, axis=1)
+
+    def find_element_2D(self, X):
+        return self.mesh_finder(X[:, 0], X[:, 1])
 
     def find_element_ND(self, X):
         tree_query = self.tree.query(X, 5)[1]
@@ -163,7 +169,7 @@ class Pos_gle_fem_base(Pos_gle_base):
         if self.verbose:
             print("Calculate mean force...")
         avg_disp = np.zeros((self.N_basis_elt_force))
-        avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
+        avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))  # TODO: Use sparse array
         for weight, xva in zip(self.weights, self.xva_list):
             for k, grouped_xva in list(xva.groupby("elem")):
                 E, dofs = self.basis_vector(grouped_xva, elem=k, compute_for="force")  # To check xva[xva["elem"] == k]
@@ -201,26 +207,25 @@ class Pos_gle_fem_base(Pos_gle_base):
         if self.verbose:
             print("Calculate potential of mean force...")
         avg_occ = np.zeros((scalar_basis.N))
-        # avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
         for weight, xva in zip(self.weights, self.xva_list):
             for k, grouped_xva in list(xva.groupby("elem")):
                 nb_points = grouped_xva.dims["time"]
                 u = np.zeros((nb_points, scalar_basis.Nbfun))  # Check dimension should we add self.dim_x?
                 dofs = np.zeros(scalar_basis.Nbfun, dtype=int)
-                loc_value_t = scalar_basis.mapping.invF(grouped_xva["x"].data.reshape(self.dim_x, 1, -1), tind=slice(k, k + 1))  # Reshape into dim * 1 element * nb of point
+                loc_value_t = scalar_basis.mapping.invF(grouped_xva["x"].data.T.reshape(self.dim_x, 1, -1), tind=slice(k, k + 1))  # Reshape into dim * 1 element * nb of point
+                # print(k, loc_value_t[0, 0, :])
                 for i in range(scalar_basis.Nbfun):
-                    u[:, i] = scalar_basis.elem.gbasis(scalar_basis.mapping, loc_value_t[:, 0, :], i, tind=slice(k, k + 1))[0].value
+                    u[:, i] = scalar_basis.elem.gbasis(scalar_basis.mapping, loc_value_t[:, 0, :], i, tind=slice(k, k + 1))[0].value  # Include jacobian term
                     dofs[i] = scalar_basis.element_dofs[i, k]
-                # avg_gram[dofs[:, None], dofs[None, :]] += np.einsum("ij,il->jl", u, u) / self.weightsum
-                avg_occ[dofs] += np.einsum("ij->j", u) / self.weightsum  # ???
+                avg_occ[dofs] += np.sum(u, axis=0) / self.weightsum  # np.einsum("ij->j", u) / self.weightsum  # ???
 
         mass = BilinearForm(lambda u, v, w: u * v).assemble(scalar_basis)
-
         self.hist_coeff = solve_linear(mass, avg_occ)
         # Projection of the log of the histogram on the basis
+        # Only consider non-zero elements
+        self.I_nonzero = self.hist_coeff.nonzero()  # Saved as it can be useful elsewhere
         log_hist = LinearForm(lambda u, w: u * (-1 * (np.log(w.pf) - np.max(np.log(w.pf))))).assemble(scalar_basis, pf=scalar_basis.interpolate(self.hist_coeff))
-        # self.potential_coeff = scalar_basis.project(DiscreteField(value=np.log(scalar_basis.interpolate(self.hist_coeff).value)))
-        self.potential_coeff = solve_linear(mass, log_hist)
+        self.potential_coeff = solve_linear(mass, log_hist)  # , x=log_hist, I=self.I_nonzero
 
     def compute_corrs(self, rank_tol=None):
         """
@@ -236,7 +241,7 @@ class Pos_gle_fem_base(Pos_gle_base):
         if self.force_coeff is None:
             raise Exception("Mean force has not been computed.")
 
-        self.bkbkcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.N_basis_elt_kernel))
+        self.bkbkcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.N_basis_elt_kernel))  # TODO: Use sparse array
         self.bkdxcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, 1))  # ,1 -> To keep compatibility with fortran kernel code
 
         for weight, xva in zip(self.weights, self.xva_list):
@@ -266,8 +271,8 @@ class Pos_gle_fem_base(Pos_gle_base):
             self._set_range_projection(rank_tol)
 
         if self.saveall:
-            np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(-1, self.N_basis_elt_kernel))
-            np.savetxt(self.prefix + self.corrsfile, self.bkbkcorrw.reshape(-1, self.N_basis_elt_kernel ** 2))
+            np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(self.trunc_ind, -1))
+            np.savetxt(self.prefix + self.corrsfile, self.bkbkcorrw.reshape(self.trunc_ind, -1))
 
     def compute_noise(self, xva, trunc_kernel=None):
         """
@@ -413,11 +418,11 @@ class Pos_gle_fem(Pos_gle_fem_base):
         bk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x))  # Check dimension should we add self.dim_x?
         dbk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x, self.dim_x))  # Check dimension
         dofs = np.zeros(self.basis.Nbfun, dtype=int)
-        loc_value_t = self.basis.mapping.invF(xva["x"].data.reshape(self.dim_x, 1, -1), tind=slice(elem, elem + 1))  # Reshape into dim * 1 element * nb of point
+        loc_value_t = self.basis.mapping.invF(xva["x"].data.T.reshape(self.dim_x, 1, -1), tind=slice(elem, elem + 1))  # Reshape into dim * 1 element * nb of point
         for i in range(self.basis.Nbfun):
             phi_field = self.basis.elem.gbasis(self.basis.mapping, loc_value_t[:, 0, :], i, tind=slice(elem, elem + 1))
-            bk[:, i, :] = phi_field[0].value.reshape(-1, self.dim_x)  # The middle indice is the choice of element, ie only one choice here
-            dbk[:, i, :, :] = phi_field[0].grad.reshape(-1, self.dim_x, self.dim_x)  # dbk via div?
+            bk[:, i, :] = phi_field[0].value.T.reshape(-1, self.dim_x)  # The middle indice is the choice of element, ie only one choice here
+            dbk[:, i, :, :] = phi_field[0].grad.T.reshape(-1, self.dim_x, self.dim_x)  # dbk via div? # TODO CHECK the transpose
             dofs[i] = self.basis.element_dofs[i, elem]
         if compute_for == "force":
             return bk, dofs
@@ -475,11 +480,11 @@ class Pos_gle_fem_equilibrium(Pos_gle_fem_base):
         bk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x))  # Check dimension should we add self.dim_x?
         dbk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x, self.dim_x))  # Check dimension
         dofs = np.zeros(self.basis.Nbfun, dtype=int)
-        loc_value_t = self.basis.mapping.invF(xva["x"].data.reshape(self.dim_x, 1, -1), tind=slice(elem, elem + 1))  # Reshape into dim * 1 element * nb of point
+        loc_value_t = self.basis.mapping.invF(xva["x"].data.T.reshape(self.dim_x, 1, -1), tind=slice(elem, elem + 1))  # Reshape into dim * 1 element * nb of point
         for i in range(self.basis.Nbfun):
             phi_field = self.basis.elem.gbasis(self.basis.mapping, loc_value_t[:, 0, :], i, tind=slice(elem, elem + 1))
-            bk[:, i, :] = phi_field[0].value.reshape(-1, self.dim_x)  # The middle indice is the choice of element, ie only one choice here
-            dbk[:, i, :, :] = phi_field[0].grad.reshape(-1, self.dim_x, self.dim_x)  # dbk via div?
+            bk[:, i, :] = phi_field[0].value.T.reshape(-1, self.dim_x)  # The middle indice is the choice of element, ie only one choice here
+            dbk[:, i, :, :] = phi_field[0].grad.T.reshape(-1, self.dim_x, self.dim_x)  # dbk via div?
             dofs[i] = self.basis.element_dofs[i, elem]
         if compute_for == "force":
             return bk, dofs
@@ -498,3 +503,65 @@ class Pos_gle_fem_equilibrium(Pos_gle_fem_base):
         self.compute_pmf(self.basis)
         self.compute_effective_masse()
         self.force_coeff = self.mass @ self.potential_coeff
+
+
+class Pos_gle_fem_app_kernel(Pos_gle_fem_base):
+    """
+    A class with a different basis for the kernel and the force.
+    Can be used as an approximation of the real kernel when dimension of bases is too high
+    """
+
+    def __init__(self, xva_arg, basis: Basis, element_finder, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
+        """
+        Create an instance of the Pos_gle class.
+
+        Parameters
+        ----------
+        xva_arg : xarray dataset (['time', 'x', 'v', 'a']) or list of datasets.
+            Use compute_va() or see its output for format details.
+            The timeseries to analyze. It should be either a xarray timeseries
+            or a listlike collection of them.
+        basis :  scikitfem Basis class
+            The finite element basis
+        element_finder: ElementFinder class
+            An initialized ElementFinder class to locate element
+        saveall : bool, default=True
+            Whether to save all output functions.
+        prefix : str
+            Prefix for the saved output functions.
+        verbose : bool, default=True
+            Set verbosity.
+        kT : float, default=2.494
+            Numerical value for kT.
+        trunc : float, default=1.0
+            Truncate all correlation functions and the memory kernel after this
+            time value.
+        """
+        Pos_gle_fem_base.__init__(self, xva_arg, basis, element_finder, saveall, prefix, verbose, kT, trunc)
+        self.N_basis_elt_force = self.N_basis_elt
+        self.N_basis_elt_kernel = self.N_basis_elt
+        self.rank_projection = True
+
+    def basis_vector(self, xva, elem, compute_for="corrs"):
+        """
+        From one trajectory compute the basis element.
+        """
+        nb_points = xva.dims["time"]
+        bk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x))  # Check dimension should we add self.dim_x?
+        dbk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x, self.dim_x))  # Check dimension
+        dofs = np.zeros(self.basis.Nbfun, dtype=int)
+        loc_value_t = self.basis.mapping.invF(xva["x"].data.T.reshape(self.dim_x, 1, -1), tind=slice(elem, elem + 1))  # Reshape into dim * 1 element * nb of point
+        for i in range(self.basis.Nbfun):
+            phi_field = self.basis.elem.gbasis(self.basis.mapping, loc_value_t[:, 0, :], i, tind=slice(elem, elem + 1))
+            bk[:, i, :] = phi_field[0].value.T.reshape(-1, self.dim_x)  # The middle indice is the choice of element, ie only one choice here
+            dbk[:, i, :, :] = phi_field[0].grad.T.reshape(-1, self.dim_x, self.dim_x)  # dbk via div? # TODO CHECK the transpose
+            dofs[i] = self.basis.element_dofs[i, elem]
+        if compute_for == "force":
+            return bk, dofs
+        if compute_for == "kernel":  # For kernel evaluation
+            return dbk, dofs
+        elif compute_for == "corrs":
+            E = np.einsum("nlfd,nd->nlf", dbk, xva["v"].data)
+            return bk, E, None, dofs
+        else:
+            raise ValueError("Basis evaluation goal not specified")

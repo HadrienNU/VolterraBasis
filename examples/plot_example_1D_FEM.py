@@ -78,8 +78,8 @@ mymem.compute_mean_force()
 # print("Force coeff shape", mymem.force_coeff.shape, mymem.force_coeff[basis.nodal_dofs].T.shape)
 force = mymem.force_coeff[basis.nodal_dofs].T
 
-basis_pot = skfem.CellBasis(m, base_elem)
-potential = mymem.integrate_vector_field(basis_pot)
+basis_pot = skfem.CellBasis(m, skfem.ElementLineHermite())
+# potential = mymem.integrate_vector_field(basis_pot)
 mymem.compute_pmf(basis_pot)
 
 mymem.compute_corrs()
@@ -100,12 +100,12 @@ plot(m, force, ax=axs[0])
 
 # Potential Plot
 axs[1].set_title("Potential")
-plot(basis_pot, potential, shading="gouraud", colorbar=True, ax=axs[1])
+# plot(basis_pot, potential, shading="gouraud", colorbar=True, ax=axs[1])
 
-plot(basis_pot, mymem.potential_coeff, shading="gouraud", colorbar=True, ax=axs[1], color="-x")
+plot(basis_pot, mymem.hist_coeff, shading="gouraud", colorbar=True, ax=axs[1], color="-x")
 axs[1].set_title("Potential")
 axs[1].grid()
-axs[1].plot(*compute_1d_fe([xvaf], bins=30))
+axs[1].plot(*compute_1d_fe([xvaf], bins=30, hist=True))
 
 # Kernel plot
 axs[2].set_title("Memory kernel")

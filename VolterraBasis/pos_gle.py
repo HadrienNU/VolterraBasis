@@ -263,10 +263,10 @@ class Pos_gle_base(object):
             self._set_range_projection(rank_tol)
 
         if self.saveall:
-            np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(-1, self.N_basis_elt_kernel * self.dim_x))
-            np.savetxt(self.prefix + self.corrsfile, self.bkbkcorrw.reshape(-1, self.N_basis_elt_kernel ** 2))
-            np.savetxt(self.prefix + self.dcorrsdxfile, self.dotbkdxcorrw.reshape(-1, self.N_basis_elt_kernel * self.dim_x))
-            np.savetxt(self.prefix + self.dcorrsfile, self.dotbkbkcorrw.reshape(-1, self.N_basis_elt_kernel ** 2))
+            np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(self.trunc_ind, -1))
+            np.savetxt(self.prefix + self.corrsfile, self.bkbkcorrw.reshape(self.trunc_ind, -1))
+            np.savetxt(self.prefix + self.dcorrsdxfile, self.dotbkdxcorrw.reshape(self.trunc_ind, -1))
+            np.savetxt(self.prefix + self.dcorrsfile, self.dotbkbkcorrw.reshape(self.trunc_ind, -1))
 
     def compute_kernel(self, method="rectangular", k0=None):
         """

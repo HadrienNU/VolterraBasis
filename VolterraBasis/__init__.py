@@ -7,7 +7,7 @@ from .pos_gle_fem import ElementFinder, Pos_gle_fem
 from .pos_gle_overdamped import Pos_gle_overdamped
 from .correlation import correlation1D as correlation
 from . import basis
-from .mesh import uniform_line, non_uniform_line, data_driven_line, centroid_driven_line, centroid_driven_mesh
+from .mesh import *
 
 __all__ = ["Pos_gle", "Pos_gle_with_friction", "Pos_gle_no_vel_basis", "Pos_gle_const_kernel", "Pos_gle_hybrid", "Pos_gle_overdamped", "correlation", "ElementFinder", "Pos_gle_fem"]
 
