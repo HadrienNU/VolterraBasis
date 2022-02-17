@@ -227,6 +227,19 @@ class Pos_gle_fem_base(Pos_gle_base):
         log_hist = LinearForm(lambda u, w: u * (-1 * (np.log(w.pf) - np.max(np.log(w.pf))))).assemble(scalar_basis, pf=scalar_basis.interpolate(self.hist_coeff))
         self.potential_coeff = solve_linear(mass, log_hist)  # , x=log_hist, I=self.I_nonzero
 
+    def evaluate_mean_force(self, xva):
+        """
+        Evaluate the mean force on the trajectory.
+        """
+        force = np.zeros_like(xva["x"].data)
+        loc_groups = xva.groupby("elem")
+        group_inds = xva.groupby("elem").groups
+        for k, grouped_xva in list(loc_groups):
+            E, dofs = self.basis_vector(grouped_xva, elem=k, compute_for="force")
+            inds = np.array(group_inds[k])
+            force[inds, :] = np.einsum("ijk,j->ik", E, self.force_coeff[dofs])
+        return force
+
     def compute_corrs(self, rank_tol=None):
         """
         Compute correlation functions.
@@ -240,29 +253,37 @@ class Pos_gle_fem_base(Pos_gle_base):
             print("Calculate correlation functions...")
         if self.force_coeff is None:
             raise Exception("Mean force has not been computed.")
-
+        # Faire bkbk sparse
         self.bkbkcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.N_basis_elt_kernel))  # TODO: Use sparse array
         self.bkdxcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, 1))  # ,1 -> To keep compatibility with fortran kernel code
-
         for weight, xva in zip(self.weights, self.xva_list):
+            a_m_force = np.zeros((weight, self.dim_x))
+            globalE = np.zeros((weight, self.N_basis_elt_kernel, self.dim_x))
             loc_groups = xva.groupby("elem")
             group_inds = xva.groupby("elem").groups
             for k, grouped_xva in list(loc_groups):
-                E_force, E, _, dofs = self.basis_vector(grouped_xva, elem=k)  # Ca doit sortir un array masqué et on
+                E_force, E, _, dofs = self.basis_vector(grouped_xva, elem=k)
+                inds = np.array(group_inds[k])
+                a_m_force[inds, :] = grouped_xva["a"].data - np.einsum("ijk,j->ik", E_force, self.force_coeff[dofs])
+                globalE[inds[:, None], dofs[None, :], :] = E
+            for k, grouped_xva in list(loc_groups):
+                _, E, _, dofs = self.basis_vector(grouped_xva, elem=k)  # Ca doit sortir un array masqué et on
                 # print(E_force.shape, E.shape)
-                a_m_force = grouped_xva["a"].data - np.einsum("ijk,j->ik", E_force, self.force_coeff[dofs])
                 inds = np.array(group_inds[k])  # Obtenir les indices du groupe
                 for n in range(self.trunc_ind):  # # On peut prange ce for avec numba
-                    E_shift = E[slice(None, None if n == 0 else -n), :, :]  # slice(None,None if n==0 else -n) shift(E, [-n, 0, 0])
-                    prodbkdx = np.einsum("ijk,ik->ij", E_shift, a_m_force[n:, :])  # On peut virer la fin des array
-                    prodbkbk = np.einsum("ijk,ilk->ijl", E_shift, E[n:, :, :])
-                    loc_inds = inds[n:] - inds[slice(None, None if n == 0 else -n)]
-                    for k, loc_ind in enumerate(loc_inds):
-                        # C'est un peu un groupby on voudrait prodbkdx.groub_by((shift(inds, n, cval=np.NaN) - inds).sum(axis=0) -> comme ça on a des valeurs unique, ensuite on enlève tout ce qui est  > self.trunc_inds
-                        # Only consider loc_inds < self.trunc_inds
-                        if loc_ind < self.trunc_ind:
-                            self.bkbkcorrw[loc_ind, dofs[:, None], dofs[None, :]] += prodbkbk[k]
-                            self.bkdxcorrw[loc_ind, dofs, 0] += prodbkdx[k]
+                    n_remove = np.sum((inds + n) >= weight)
+                    last_slice = slice(None, None if n_remove == 0 else -n_remove)
+                    self.bkdxcorrw[n, dofs, 0] += weight * np.einsum("ijk,ik->j", E[last_slice, :, :], a_m_force[inds[last_slice] + n, :]) / (weight - n)
+                    self.bkbkcorrw[n, dofs, :] += weight * np.einsum("ijk,ilk->jl", E[last_slice, :, :], globalE[inds[last_slice] + n, :]) / (weight - n)
+                    # E_shift = E[slice(None, None if n == 0 else -n), :, :]  # slice(None,None if n==0 else -n) shift(E, [-n, 0, 0])
+                    # prodbkbk = np.einsum("ijk,ilk->ijl", E_shift, E[n:, :, :])
+                    # loc_inds = inds[n:] - inds[slice(None, None if n == 0 else -n)]
+                    # for j, loc_ind in enumerate(loc_inds):
+                    #     # C'est un peu un groupby on voudrait prodbkdx.groub_by((shift(inds, n, cval=np.NaN) - inds).sum(axis=0) -> comme ça on a des valeurs unique, ensuite on enlève tout ce qui est  > self.trunc_inds
+                    #     # Only consider loc_inds < self.trunc_inds
+                    #     if loc_ind < self.trunc_ind:
+                    #         self.bkbkcorrw[loc_ind, dofs[:, None], dofs[None, :]] += weight * prodbkbk[j] / (weight - loc_ind)
+                    #         # self.bkdxcorrw[loc_ind, dofs, 0] += weight * prodbkdx[j] / (weight - loc_ind)
 
         self.bkbkcorrw /= self.weightsum
         self.bkdxcorrw /= self.weightsum
