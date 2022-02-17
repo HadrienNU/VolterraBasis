@@ -139,7 +139,10 @@ class Pos_gle_base(object):
                 raise Exception("Rank of basis is null.")
             # Construct projection
             self.P_range = U[:, :rank].T  # # Save the matrix for future use, matrix is rank x N_basis_elt_kernel
-            self.bkbkcorrw = np.einsum("lj,ijk,mk->ilm", self.P_range, self.bkbkcorrw, self.P_range)
+            # Faster to do one product in order
+            tempbkbkcorrw = np.einsum("ijk,mk->ijm", self.bkbkcorrw, self.P_range)
+            self.bkbkcorrw = np.einsum("lj,ijk->ilk", self.P_range, tempbkbkcorrw)
+            # self.bkbkcorrw = np.einsum("lj,ijk,mk->ilm", self.P_range, self.bkbkcorrw, self.P_range)
             self.bkdxcorrw = np.einsum("kj,ijd->ikd", self.P_range, self.bkdxcorrw)
             if self.dotbkdxcorrw is not None:
                 self.dotbkdxcorrw = np.einsum("kj,ijd->ikd", self.P_range, self.dotbkdxcorrw)
