@@ -190,6 +190,9 @@ class Pos_gle_base(object):
             print("Found effective mass:", self.mass)
         return self.mass
 
+    def set_zero_force(self):
+        self.force_coeff = np.zeros((self.N_basis_elt_force, self.dim_x))
+
     def compute_mean_force(self):
         """
         Computes the mean force from the trajectories.
@@ -563,7 +566,7 @@ class Pos_gle_const_kernel(Pos_gle_base):
     def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
         Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
         self.N_basis_elt_force = self.N_basis_elt
-        self.N_basis_elt_kernel = 1
+        self.N_basis_elt_kernel = self.dim_x
 
     def basis_vector(self, xva, compute_for="corrs"):
         """

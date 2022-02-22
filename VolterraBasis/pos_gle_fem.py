@@ -5,6 +5,8 @@ from skfem.assembly.basis import Basis
 from skfem import LinearForm, BilinearForm, solve_linear
 from skfem.helpers import dot
 from scipy.spatial import cKDTree
+from itertools import product
+from scipy.sparse import coo_matrix
 
 from .pos_gle import Pos_gle_base
 
@@ -83,7 +85,7 @@ class Pos_gle_fem_base(Pos_gle_base):
     Method "trapz" and "second_kind" are not implemented
     """
 
-    def __init__(self, xva_arg, basis: Basis, element_finder, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, **kwargs):
+    def __init__(self, xva_arg, basis: Basis, element_finder, saveall=False, prefix="", verbose=True, kT=2.494, trunc=1.0, **kwargs):
         """
         Using Finite element basis functions.
 
@@ -162,22 +164,32 @@ class Pos_gle_fem_base(Pos_gle_base):
             print("Found effective mass:", self.mass)
         return self.mass
 
-    def compute_mean_force(self):
+    def compute_mean_force(self, regularization=0.0):
         """
         Computes the mean force from the trajectories.
         """
         if self.verbose:
             print("Calculate mean force...")
         avg_disp = np.zeros((self.N_basis_elt_force))
-        avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))  # TODO: Use sparse array
+        # avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
+        data_gram = np.zeros((self.basis.Nbfun, self.basis.Nbfun, self.basis.nelems))
+        indices = np.zeros((self.basis.Nbfun * self.basis.Nbfun * self.basis.nelems, 2), dtype=np.int64)
         for weight, xva in zip(self.weights, self.xva_list):
             for k, grouped_xva in list(xva.groupby("elem")):
                 E, dofs = self.basis_vector(grouped_xva, elem=k, compute_for="force")  # To check xva[xva["elem"] == k]
-                # print(temp_gram.shape, avg_gram[dofs[:, None], dofs[None, :]].shape)
-                avg_gram[dofs[:, None], dofs[None, :]] += np.einsum("ijk,ilk->jl", E, E) / self.weightsum
+                data_gram[:, :, k] += np.einsum("ijk,ilk->jl", E, E) / self.weightsum
+                indices[slice(k * (self.basis.Nbfun * self.basis.Nbfun), (k + 1) * (self.basis.Nbfun * self.basis.Nbfun))] = np.array([[i, j] for j, i in product(dofs, dofs)])
                 avg_disp[dofs] += np.einsum("ijk,ik->j", E, grouped_xva["a"].data) / self.weightsum  # Change to einsum to use vectorial value of E
-        self.invgram = self.kT * np.linalg.pinv(avg_gram)
-        self.force_coeff = np.matmul(np.linalg.pinv(avg_gram), avg_disp)
+                # avg_gram[dofs[:, None], dofs[None, :]] += np.einsum("ijk,ilk->jl", E, E) / mymem.weightsum
+        # Construct sparse matrix
+        avg_gram = coo_matrix((data_gram.flatten("F"), (indices[:, 0], indices[:, 1])), shape=(self.N_basis_elt_force, self.N_basis_elt_force))
+        avg_gram.eliminate_zeros()
+        avg_gram.tocsr()
+        self.gram = avg_gram
+        if regularization > 0.0:  # Regularization of the gram matrix
+            avg_gram += regularization * (BilinearForm(lambda u, v, w: dot(u, v)).assemble(self.basis))
+        self.force_coeff = solve_linear(avg_gram, avg_disp)
+        # self.force_coeff = np.matmul(np.linalg.pinv(avg_gram), avg_disp)
 
     def integrate_vector_field(self, scalar_basis):
         """
@@ -215,17 +227,25 @@ class Pos_gle_fem_base(Pos_gle_base):
                 loc_value_t = scalar_basis.mapping.invF(grouped_xva["x"].data.T.reshape(self.dim_x, 1, -1), tind=slice(k, k + 1))  # Reshape into dim * 1 element * nb of point
                 # print(k, loc_value_t[0, 0, :])
                 for i in range(scalar_basis.Nbfun):
-                    u[:, i] = scalar_basis.elem.gbasis(scalar_basis.mapping, loc_value_t[:, 0, :], i, tind=slice(k, k + 1))[0].value  # Include jacobian term
+                    # print(scalar_basis.elem.gbasis(scalar_basis.mapping, loc_value_t[:, 0, :], i, tind=slice(k, k + 1))[0].value.shape)
+                    u[:, i] = scalar_basis.elem.gbasis(scalar_basis.mapping, loc_value_t[:, 0, :], i, tind=slice(k, k + 1))[0].value.T[:, 0]
                     dofs[i] = scalar_basis.element_dofs[i, k]
                 avg_occ[dofs] += np.sum(u, axis=0) / self.weightsum  # np.einsum("ij->j", u) / self.weightsum  # ???
 
         mass = BilinearForm(lambda u, v, w: u * v).assemble(scalar_basis)
         self.hist_coeff = solve_linear(mass, avg_occ)
+        # print("avg occ", avg_occ)
+        # print(np.linalg.inv(mass.todense()) @ avg_occ)
+        # print("hist", self.hist_coeff)
         # Projection of the log of the histogram on the basis
         # Only consider non-zero elements
-        self.I_nonzero = self.hist_coeff.nonzero()  # Saved as it can be useful elsewhere
-        log_hist = LinearForm(lambda u, w: u * (-1 * (np.log(w.pf) - np.max(np.log(w.pf))))).assemble(scalar_basis, pf=scalar_basis.interpolate(self.hist_coeff))
-        self.potential_coeff = solve_linear(mass, log_hist)  # , x=log_hist, I=self.I_nonzero
+        self.I_nonzero = (self.hist_coeff > 0).nonzero()  # Saved as it can be useful elsewhere
+        # print(self.hist_coeff[self.I_nonzero])
+        log_hist = LinearForm(lambda u, w: u * (-1 * (np.log(w.pf)) - np.nanmax(np.log(w.pf)))).assemble(scalar_basis, pf=scalar_basis.interpolate(self.hist_coeff))  #
+        print(self.I_nonzero)
+        print(log_hist[self.I_nonzero])
+        self.potential_coeff = solve_linear(mass, log_hist)  # , x=np.full_like(self.hist_coeff, np.inf), I=self.I_nonzero
+        print(self.potential_coeff[self.I_nonzero])
 
     def evaluate_mean_force(self, xva):
         """
