@@ -2,7 +2,7 @@ import numpy as np
 import xarray as xr
 from scipy.integrate import trapezoid
 
-from .fkernel import kernel_first_kind_trapz, kernel_second_kind, kernel_first_kind_euler, kernel_first_kind_midpoint
+from .fkernel import kernel_first_kind_trapz, kernel_first_kind_rect, kernel_first_kind_midpoint, kernel_second_kind_rect, kernel_second_kind_trapz
 from .correlation import correlation_1D, correlation_ND
 
 
@@ -280,13 +280,11 @@ class Pos_gle_base(object):
 
         Parameters
         ----------
-        method : {"rectangular", "midpoint", "midpoint_w_richardson","trapz","second_kind"}, default=rectangular
+        method : {"rectangular", "midpoint", "midpoint_w_richardson","trapz","second_kind_rect","second_kind_trapz"}, default=rectangular
             Choose numerical method of inversion of the volterra equation
         k0 : float, default=0.
             If you give a nonzero value for k0, this is used at time zero for the trapz and second kind method. If set to None,
             the F-routine will calculate k0 from the second kind memory equation.
-        rank_tol: float, default=None
-            Tolerance for rank computation in case of projection onto the range of the basis
         """
         if self.bkbkcorrw is None or self.bkdxcorrw is None:
             raise Exception("Need correlation functions to compute the kernel.")
@@ -298,16 +296,16 @@ class Pos_gle_base(object):
         if self.verbose:
             print("Use dt:", dt)
 
-        if k0 is None and method in ["trapz", "second_kind"]:  # Then we should compute initial value from time derivative at zero
+        if k0 is None and method in ["trapz", "second_kind_rect", "second_kind_trapz"]:  # Then we should compute initial value from time derivative at zero
             if self.dotbkdxcorrw is None:
                 raise Exception("Need correlation with derivative functions to compute the kernel using this method or provide initial value.")
             k0 = np.matmul(np.linalg.inv(self.bkbkcorrw[0, :, :]), self.dotbkdxcorrw[0, :, :])
             if self.verbose:
                 print("K0", k0)
-                # print("Gram", self.bkbkcorrw[0, self.N_zeros_kernel :, self.N_zeros_kernel :])
+                print("Gram", self.bkbkcorrw[0, :, :])
                 # print("Gram eigs", np.linalg.eigvals(self.bkbkcorrw[0, :, :]))
         if method == "rectangular":
-            self.kernel = kernel_first_kind_euler(self.bkbkcorrw, self.bkdxcorrw, dt)
+            self.kernel = kernel_first_kind_rect(self.bkbkcorrw, self.bkdxcorrw, dt)
         elif method == "midpoint":  # Deal with not even data lenght
             self.kernel = kernel_first_kind_midpoint(self.bkbkcorrw, self.bkdxcorrw, dt)
             self.time = self.time[:-1:2, :]
@@ -321,12 +319,16 @@ class Pos_gle_base(object):
             self.kernel = 0.5 * (ker[1:-1, :, :] + 0.5 * (ker[:-2, :, :] + ker[2:, :, :]))  # Smoothing
             self.kernel = np.insert(self.kernel, 0, k0, axis=0)
             self.time = self.time[:-1, :]
-        elif method == "second_kind":
+        elif method == "second_kind_rect":
             if self.dotbkdxcorrw is None or self.dotbkbkcorrw is None:
                 raise Exception("Need correlation with derivative functions to compute the kernel using this method, please use other method.")
-            self.kernel = kernel_second_kind(k0, self.bkbkcorrw[0, :, :], self.dotbkbkcorrw, self.dotbkdxcorrw, dt)
+            self.kernel = kernel_second_kind_rect(k0, self.bkbkcorrw[0, :, :], self.dotbkbkcorrw, self.dotbkdxcorrw, dt)
+        elif method == "second_kind_trapz":
+            if self.dotbkdxcorrw is None or self.dotbkbkcorrw is None:
+                raise Exception("Need correlation with derivative functions to compute the kernel using this method, please use other method.")
+            self.kernel = kernel_second_kind_trapz(k0, self.bkbkcorrw[0, :, :], self.dotbkbkcorrw, self.dotbkdxcorrw, dt)
         else:
-            raise Exception("Method for volterra inversion is not in  {rectangular, midpoint, midpoint_w_richardson,trapz,second_kind}")
+            raise Exception("Method for volterra inversion is not in  {rectangular, midpoint, midpoint_w_richardson,trapz,second_kind_rect,second_kind_trapz}")
 
         if self.saveall:
             np.savetxt(self.prefix + self.kernelfile, np.hstack((self.time, self.kernel.reshape(self.kernel.shape[0], -1))))
