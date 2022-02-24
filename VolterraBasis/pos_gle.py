@@ -3,7 +3,7 @@ import xarray as xr
 from scipy.integrate import trapezoid
 
 from .fkernel import kernel_first_kind_trapz, kernel_second_kind, kernel_first_kind_euler, kernel_first_kind_midpoint
-from .correlation import correlation1D, correlation_ND
+from .correlation import correlation_1D, correlation_ND
 
 
 class Pos_gle_base(object):
@@ -246,19 +246,19 @@ class Pos_gle_base(object):
                         print("Too many basis function, compute correlations one by one (slow)")
                     for n in range(E.shape[1]):
                         for d in range(self.dim_x):
-                            self.bkdxcorrw[:, n, d] += weight * correlation1D(E[:, n], xva["a"].data[:, d] - force[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
-                            self.dotbkdxcorrw[:, n, d] += weight * correlation1D(dE[:, n], xva["a"].data[:, d] - force[:, d], trunc=self.trunc_ind)
+                            self.bkdxcorrw[:, n, d] += weight * correlation_1D(E[:, n], xva["a"].data[:, d] - force[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
+                            self.dotbkdxcorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva["a"].data[:, d] - force[:, d], trunc=self.trunc_ind)
                         for m in range(E.shape[1]):
-                            self.bkbkcorrw[:, n, m] += weight * correlation1D(E[:, n], E[:, m], trunc=self.trunc_ind)
-                            self.dotbkbkcorrw[:, n, m] += weight * correlation1D(dE[:, n], E[:, m], trunc=self.trunc_ind)
+                            self.bkbkcorrw[:, n, m] += weight * correlation_1D(E[:, n], E[:, m], trunc=self.trunc_ind)
+                            self.dotbkbkcorrw[:, n, m] += weight * correlation_1D(dE[:, n], E[:, m], trunc=self.trunc_ind)
             else:
                 for n in range(E.shape[1]):
                     for d in range(self.dim_x):
-                        self.bkdxcorrw[:, n, d] += weight * correlation1D(E[:, n], xva["a"].data[:, d] - force[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
-                        self.dotbkdxcorrw[:, n, d] += weight * correlation1D(dE[:, n], xva["a"].data[:, d] - force[:, d], trunc=self.trunc_ind)
+                        self.bkdxcorrw[:, n, d] += weight * correlation_1D(E[:, n], xva["a"].data[:, d] - force[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
+                        self.dotbkdxcorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva["a"].data[:, d] - force[:, d], trunc=self.trunc_ind)
                     for m in range(E.shape[1]):
-                        self.bkbkcorrw[:, n, m] += weight * correlation1D(E[:, n], E[:, m], trunc=self.trunc_ind)
-                        self.dotbkbkcorrw[:, n, m] += weight * correlation1D(dE[:, n], E[:, m], trunc=self.trunc_ind)
+                        self.bkbkcorrw[:, n, m] += weight * correlation_1D(E[:, n], E[:, m], trunc=self.trunc_ind)
+                        self.dotbkbkcorrw[:, n, m] += weight * correlation_1D(dE[:, n], E[:, m], trunc=self.trunc_ind)
 
         self.bkbkcorrw /= self.weightsum
         self.bkdxcorrw /= self.weightsum
