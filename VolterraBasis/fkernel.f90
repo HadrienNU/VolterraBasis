@@ -105,31 +105,6 @@ subroutine simpson_integral(res,dt,n,B,kernel,dim_basis,dim_x)
 end subroutine simpson_integral
 
 
-subroutine kernel_first_kind_trapz(lenTraj, dim_basis,dim_x, kernel, k0, B, DxB,dt)
-  use lapackMod
-  implicit none
-  integer,intent(in)::lenTraj,dim_basis,dim_x
-  double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(out)::kernel
-  double precision,dimension(dim_basis,dim_x),intent(in)::k0
-  double precision,dimension(0:lenTraj, dim_basis, dim_basis),intent(in)::B
-  double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(in)::DxB
-  double precision,intent(in)::dt
-  double precision,dimension(dim_basis,dim_basis)::invB0
-  double precision,dimension(dim_basis,dim_x)::num
-  integer::i
-
-  invB0=inv(0.5*dt*B(0,:,:)) ! Update this depending of integration rule
-
-  kernel(0,:,:)=k0
-
-  do i=1,lenTraj !! for i in range(1, lenTraj):
-     call trapz_integral(num,dt,i,B(0:i,:,:),kernel(0:i,:,:),dim_basis,dim_x)
-     kernel(i,:,:)=-1*matmul(invB0,num+DxB(i,:,:))
-  end do
-
-
-end subroutine kernel_first_kind_trapz
-
 subroutine kernel_first_kind_rect(lenTraj, dim_basis, dim_x, kernel,  B, DxB,dt)
   use lapackMod
   implicit none
@@ -177,6 +152,31 @@ subroutine kernel_first_kind_midpoint(lenTraj, dim_basis,dim_x, kernel,  B, DxB,
 
 
 end subroutine kernel_first_kind_midpoint
+
+subroutine kernel_first_kind_trapz(lenTraj, dim_basis,dim_x, kernel, k0, B, DxB,dt)
+  use lapackMod
+  implicit none
+  integer,intent(in)::lenTraj,dim_basis,dim_x
+  double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(out)::kernel
+  double precision,dimension(dim_basis,dim_x),intent(in)::k0
+  double precision,dimension(0:lenTraj, dim_basis, dim_basis),intent(in)::B
+  double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(in)::DxB
+  double precision,intent(in)::dt
+  double precision,dimension(dim_basis,dim_basis)::invB0
+  double precision,dimension(dim_basis,dim_x)::num
+  integer::i
+
+  invB0=inv(0.5*dt*B(0,:,:)) ! Update this depending of integration rule
+
+  kernel(0,:,:)=k0
+
+  do i=1,lenTraj !! for i in range(1, lenTraj):
+     call trapz_integral(num,dt,i,B(0:i,:,:),kernel(0:i,:,:),dim_basis,dim_x)
+     kernel(i,:,:)=-1*matmul(invB0,num+DxB(i,:,:))
+  end do
+
+
+end subroutine kernel_first_kind_trapz
 
 subroutine kernel_first_kind_simpson(lenTraj, dim_basis,dim_x, kernel, k0, B, DxB,dt)
   use lapackMod
@@ -314,3 +314,49 @@ subroutine kernel_second_kind_simpson(lenTraj, dim_basis,dim_x, kernel, k0, B0, 
   end do
 
 end subroutine kernel_second_kind_simpson
+
+
+! to_integrate = np.einsum("ik,ikl->il", E[: n + 1, :][::-1, :], self.kernel[: n + 1, :, :])
+! memory[n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
+
+subroutine memory_rect(lenTraj,len_mem, dim_basis, dim_x, memory, kernel, E, dt)
+  implicit none
+  integer,intent(in)::lenTraj,len_mem,dim_basis,dim_x
+  double precision,dimension(0:lenTraj, dim_x),intent(out)::memory
+  double precision,dimension(0:len_mem, dim_basis,dim_x),intent(in)::kernel
+  double precision,dimension(0:lenTraj, dim_basis),intent(in)::E
+  double precision,intent(in)::dt
+  integer::i,j
+
+  memory(:,:)=0.
+
+  do i=1,lenTraj !! for i in range(1, lenTraj):
+    do j=0,min(i-1,len_mem)
+       memory(i,:)=memory(i,:)-dt*matmul(E(i-j,:),kernel(j,:,:))
+    end do
+  end do
+
+
+end subroutine memory_rect
+
+subroutine memory_trapz(lenTraj,len_mem, dim_basis, dim_x, memory, kernel, E, dt)
+  implicit none
+  integer,intent(in)::lenTraj,len_mem,dim_basis,dim_x
+  double precision,dimension(0:lenTraj, dim_x),intent(out)::memory
+  double precision,dimension(0:len_mem, dim_basis,dim_x),intent(in)::kernel
+  double precision,dimension(0:lenTraj, dim_basis),intent(in)::E
+  double precision,intent(in)::dt
+  integer::i,j
+
+  memory(0,:)=0.
+
+  do i=1,lenTraj !! for i in range(1, lenTraj):
+    memory(i,:)=-0.5*dt*matmul(E(i,:),kernel(0,:,:))
+    do j=1,min(i-1,len_mem)
+       memory(i,:)=memory(i,:)-dt*matmul(E(i-j,:),kernel(j,:,:))
+    end do
+   memory(i,:)=memory(i,:)-0.5*dt*matmul(E(i-min(i,len_mem),:),kernel(min(i,len_mem),:,:))
+  end do
+
+
+end subroutine memory_trapz

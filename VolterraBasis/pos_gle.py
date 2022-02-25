@@ -2,7 +2,7 @@ import numpy as np
 import xarray as xr
 from scipy.integrate import trapezoid
 
-from .fkernel import kernel_first_kind_trapz, kernel_first_kind_rect, kernel_first_kind_midpoint, kernel_second_kind_rect, kernel_second_kind_trapz
+from .fkernel import kernel_first_kind_trapz, kernel_first_kind_rect, kernel_first_kind_midpoint, kernel_second_kind_rect, kernel_second_kind_trapz, memory_rect, memory_trapz
 from .correlation import correlation_1D, correlation_ND
 
 
@@ -71,6 +71,8 @@ class Pos_gle_base(object):
         self.dotbkdxcorrw = None
         self.dotbkbkcorrw = None
         self.force_coeff = None
+
+        self.method = None
 
         self.rank_projection = False
         self.P_range = None
@@ -315,7 +317,7 @@ class Pos_gle_base(object):
                 print("K0", k0)
                 # print("Gram", self.bkbkcorrw[0, :, :])
                 # print("Gram eigs", np.linalg.eigvals(self.bkbkcorrw[0, :, :]))
-        if method == "rectangular":
+        if method in ["rect", "rectangular"]:
             self.kernel = kernel_first_kind_rect(self.bkbkcorrw, self.bkdxcorrw, dt)
         elif method == "midpoint":  # Deal with not even data lenght
             self.kernel = kernel_first_kind_midpoint(self.bkbkcorrw, self.bkdxcorrw, dt)
@@ -391,22 +393,12 @@ class Pos_gle_base(object):
         if self.rank_projection:
             E = np.einsum("kj,ij->ik", self.P_range, E)
         force = np.matmul(E_force, self.force_coeff)
-        memory = np.zeros(force.shape)
-        if self.method == "trapz":
-            trunc_kernel -= 1
-        elif self.method in ["midpoint", "midpoint_w_richardson"]:
+        if self.method in ["rect", "rectangular", "second_kind_rect"] or self.method is None:
+            memory = memory_rect(self.kernel[:trunc_kernel], E, dt)
+        elif self.method == "trapz" or self.method == "second_kind_trapz":
+            memory = memory_trapz(self.kernel[:trunc_kernel], E, dt)
+        else:
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
-        # else:
-        #     pass
-        for n in range(trunc_kernel):
-            to_integrate = np.einsum("ik,ikl->il", E[: n + 1, :][::-1, :], self.kernel[: n + 1, :, :])
-            memory[n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
-            # memory[n] = -1 * to_integrate.sum() * dt
-        # Only select self.trunc_ind points for the integration
-        for n in range(trunc_kernel, memory.shape[0]):
-            to_integrate = np.einsum("ik,ikl->il", E[n - trunc_kernel + 1 : n + 1, :][::-1, :], self.kernel[:trunc_kernel, :, :])
-            memory[n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
-            # memory[n] = -1 * to_integrate.sum() * dt
         return time, xva["a"].data - force - memory, xva["a"].data, force, memory
 
     def force_eval(self, x):

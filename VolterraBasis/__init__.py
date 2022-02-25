@@ -44,6 +44,8 @@ def xframe(x, time, v=None, fix_time=False, round_time=1.0e-4, dt=-1):
     if v is None:
         ds = xr.Dataset({"x": (["time", "dim_x"], x)}, coords={"time": time}, attrs={"dt": dt})
     else:
+        if v.ndim == 1:
+            v = v.reshape(-1, 1)
         ds = xr.Dataset({"x": (["time", "dim_x"], x), "v": (["time", "dim_x"], v)}, coords={"time": time}, attrs={"dt": dt})
     return ds
 

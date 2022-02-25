@@ -342,12 +342,12 @@ class Pos_gle_fem_base(Pos_gle_base):
             E[inds[:, None], dofs[None, :], :] = loc_E
 
         for n in range(trunc_kernel):
-            to_integrate = np.einsum("ik,ikl->il", E[: n + 1, :][::-1, :], self.kernel[: n + 1, :, :])
+            to_integrate = np.einsum("ikl,ik->il", E[: n + 1, :, :][::-1, :, :], self.kernel[: n + 1, :, 0])
             memory[n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
             # memory[n] = -1 * to_integrate.sum() * dt
         # Only select self.trunc_ind points for the integration
         for n in range(trunc_kernel, memory.shape[0]):
-            to_integrate = np.einsum("ik,ikl->il", E[n - trunc_kernel + 1 : n + 1, :][::-1, :], self.kernel[:trunc_kernel, :, :])
+            to_integrate = np.einsum("ikl,ik->il", E[n - trunc_kernel + 1 : n + 1, :, :][::-1, :, :], self.kernel[:trunc_kernel, :, 0])
             memory[n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
             # memory[n] = -1 * to_integrate.sum() * dt
         return time, xva["a"].data - force - memory, xva["a"].data, force, memory
