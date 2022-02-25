@@ -67,7 +67,7 @@ for i in range(1, trj.shape[1]):
 # xvaf = vb.compute_va(xf)
 x_min = xf.min()["x"].data
 x_max = xf.max()["x"].data
-m = skfem.MeshLine(vb.uniform_line(x_min, x_max, 30))
+m = skfem.MeshLine(vb.uniform_line(0, x_max, 30))
 base_elem = skfem.ElementLineP2()  # skfem.ElementTriRT0()  #
 e = skfem.ElementVector(base_elem)
 basis = skfem.CellBasis(m, e)
@@ -83,9 +83,9 @@ basis_pot = skfem.CellBasis(m, skfem.ElementLineHermite())
 mymem.compute_pmf(basis_pot)
 
 mymem.compute_corrs()
-mymem.compute_kernel(method="midpoint")
-time, kernel = mymem.kernel_eval([1.5, 2.0, 2.5])
-print(time.shape, kernel.shape)
+mymem.compute_kernel(method="rectangular")
+# time, kernel = mymem.kernel_eval([1.5, 2.0, 2.5])
+# print(time.shape, kernel.shape)
 
 # # Compute noise
 # time_noise, noise_reconstructed, _, _, _ = mymem.compute_noise(xvaf, trunc_kernel=200)
@@ -113,7 +113,7 @@ axs[2].set_xscale("log")
 axs[2].set_xlabel("$t$")
 axs[2].set_ylabel("$\\Gamma$")
 axs[2].grid()
-axs[2].plot(time, kernel[:, :, 0, 0], "-x")
+# axs[2].plot(time, kernel[:, :, 0, 0], "-x")
 # # Noise plot
 # axs[2].set_title("Noise")
 # axs[2].set_xlabel("$t$")

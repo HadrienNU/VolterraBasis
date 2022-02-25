@@ -8,7 +8,7 @@ from scipy.spatial import cKDTree
 from itertools import product
 from scipy.sparse import coo_matrix
 
-from .pos_gle import Pos_gle_base
+from .pos_gle import Pos_gle_base, _convert_input_array_for_evaluation
 
 
 class ElementFinder:
@@ -26,9 +26,9 @@ class ElementFinder:
             self.bins = mesh.p[0, ix[0]]
             self.bins_idx = mesh.t[0]
             self.find = self.find_element_1D
-        elif self.dim == 2:
-            self.find = self.find_element_2D
-            self.mesh_finder = mesh.element_finder(mapping)
+        # elif self.dim == 2:
+        #     self.find = self.find_element_2D
+        #     self.mesh_finder = mesh.element_finder(mapping)
         else:
             self.tree = cKDTree(np.mean(mesh.p[:, mesh.t], axis=1).T)
             self.find = self.find_element_ND
@@ -49,13 +49,13 @@ class ElementFinder:
     def find_element_2D(self, X):
         return self.mesh_finder(X[:, 0], X[:, 1])
 
-    def find_element_ND(self, X):
+    def find_element_ND(self, X, _search_all=False):
         tree_query = self.tree.query(X, 5)[1]
         element_inds = np.empty((X.shape[0],), dtype=np.int)
         for n, point in enumerate(X):  # Try to avoid loop
             i_e = tree_query[n, :]
             X_loc = self.mapping.invF((point.T)[:, None, None], tind=i_e)
-            inside = self.inside_2D(X_loc)
+            inside = self.inside(X_loc)
             element_inds[n] = i_e[np.argmax(inside, axis=0)]
         return element_inds
 
@@ -69,13 +69,13 @@ class ElementFinder:
         """
         Say which point are inside the element
         """
-        return (X[0] >= 0) * (X[1] >= 0) * (1 - X[0] - X[1] >= 0)
+        return (X[0] >= 0) * (X[1] >= 0) * (1 - X[0] - X[1] >= -np.finfo(X.dtype).eps)
 
     def inside_3D(X):
         """
         Say which point are inside the element
         """
-        return (X[0] >= 0) * (X[1] >= 0) * (X[2] >= 0) * (1 - X[0] - X[1] - X[2] >= 0)
+        return (X[0] >= 0) * (X[1] >= 0) * (X[2] >= 0) * (1 - X[0] - X[1] - X[2] >= -np.finfo(X.dtype).eps)
 
 
 class Pos_gle_fem_base(Pos_gle_base):
@@ -247,19 +247,6 @@ class Pos_gle_fem_base(Pos_gle_base):
         self.potential_coeff = solve_linear(mass, log_hist)  # , x=np.full_like(self.hist_coeff, np.inf), I=self.I_nonzero
         print(self.potential_coeff[self.I_nonzero])
 
-    def evaluate_mean_force(self, xva):
-        """
-        Evaluate the mean force on the trajectory.
-        """
-        force = np.zeros_like(xva["x"].data)
-        loc_groups = xva.groupby("elem")
-        group_inds = xva.groupby("elem").groups
-        for k, grouped_xva in list(loc_groups):
-            E, dofs = self.basis_vector(grouped_xva, elem=k, compute_for="force")
-            inds = np.array(group_inds[k])
-            force[inds, :] = np.einsum("ijk,j->ik", E, self.force_coeff[dofs])
-        return force
-
     def compute_corrs(self, rank_tol=None):
         """
         Compute correlation functions.
@@ -345,25 +332,14 @@ class Pos_gle_fem_base(Pos_gle_base):
         memory = np.zeros(xva["x"].data.shape)
         if "elem" not in xva.data_vars:
             xva.update({"elem": (["time"], self.element_finder.find(xva["x"].data))})
+        E = np.zeros((xva["x"].data.shape[0], self.N_basis_elt_kernel, self.dim_x))
         loc_groups = xva.groupby("elem")
         group_inds = xva.groupby("elem").groups
         for k, grouped_xva in list(loc_groups):
-            E_force, E, _, dofs = self.basis_vector(grouped_xva, elem=k)
-            inds = np.array(group_inds[k])  # Obtenir les indices du groupe
-            force[inds, :] = np.einsum("ijk,j->ik", E, self.force_coeff[dofs])
-            for n in range(memory.shape[0]):  # # On peut prange ce for avec numba
-                if n <= trunc_kernel:
-                    E_shift = E[slice(None, None if n == 0 else -n), :, :]  # slice(None,None if n==0 else -n) shift(E, [-n, 0, 0])
-                    to_integrate = np.einsum("ikd,ik->id", E[: n + 1, :][::-1, :], self.kernel[: n + 1, :, 0])
-                    prodbkdx = np.einsum("ijk,ik->ij", E_shift, a_m_force[n:, :])  # On peut virer la fin des array
-                else:
-                    E_shift = E[slice(None, None if n == 0 else -n), :, :]  # slice(None,None if n==0 else -n) shift(E, [-n, 0, 0])
-                    to_integrate = np.einsum("ik,ikl->il", E[n - trunc_kernel + 1 : n + 1, :][::-1, :], self.kernel[:trunc_kernel, :, :])
-                loc_inds = inds[n:] - inds[slice(None, None if n == 0 else -n)]
-                # print(loc_inds.shape)
-                for k, loc_ind in enumerate(loc_inds):
-                    if loc_ind < self.trunc_ind:
-                        self.memory[loc_ind] += -1 * to_integrate[k] * dt
+            E_force, loc_E, _, dofs = self.basis_vector(grouped_xva, elem=k)
+            inds = np.array(group_inds[k])
+            force[inds, :] = np.einsum("ijk,j->ik", E_force, self.force_coeff[dofs])
+            E[inds[:, None], dofs[None, :], :] = loc_E
 
         for n in range(trunc_kernel):
             to_integrate = np.einsum("ik,ikl->il", E[: n + 1, :][::-1, :], self.kernel[: n + 1, :, :])
@@ -376,24 +352,23 @@ class Pos_gle_fem_base(Pos_gle_base):
             # memory[n] = -1 * to_integrate.sum() * dt
         return time, xva["a"].data - force - memory, xva["a"].data, force, memory
 
-    def dU(self, x):
+    def force_eval(self, x):
         """
         Evaluate the force at given points x
         """
         if self.force_coeff is None:
             raise Exception("Mean force has not been computed.")
-        x = np.asarray(x).reshape(-1, self.dim_x)
-        output_dU = np.zeros_like(x)
-        eval_pos = xr.Dataset({"x": (["time", "dim_x"], x)})
-        eval_pos.update({"elem": (["time"], self.element_finder.find(x))})
+        eval_pos = _convert_input_array_for_evaluation(x, self.dim_x)
+        if "elem" not in eval_pos.data_vars:
+            eval_pos.update({"elem": (["time"], self.element_finder.find(x))})
+        output_force = np.zeros_like(eval_pos["x"].data)
         loc_groups = eval_pos.groupby("elem")
         group_inds = eval_pos.groupby("elem").groups
         for k, grouped_xva in list(loc_groups):
             E, dofs = self.basis_vector(grouped_xva, elem=k, compute_for="force")  # To check xva[xva["elem"] == k]
             inds = np.array(group_inds[k])
-            output_dU[inds, :] = np.einsum("ijk,j->ik", E, self.force_coeff[dofs])
-        # E = self.basis_vector(), compute_for="force")
-        return -1 * output_dU  # Return the force as array (nb of evalution point x dim_x)
+            output_force[inds, :] = np.einsum("ijk,j->ik", E, self.force_coeff[dofs])
+        return output_force  # Return the force as array (nb of evalution point x dim_x)
 
     def kernel_eval(self, x):
         """
@@ -401,10 +376,10 @@ class Pos_gle_fem_base(Pos_gle_base):
         """
         if self.kernel is None:
             raise Exception("Kernel has not been computed.")
-        x = np.asarray(x).reshape(-1, self.dim_x)
-        output_kernel = np.zeros((self.kernel.shape[0], x.shape[0], self.dim_x, self.dim_x))
-        eval_pos = xr.Dataset({"x": (["time", "dim_x"], x)})
-        eval_pos.update({"elem": (["time"], self.element_finder.find(x))})
+        eval_pos = _convert_input_array_for_evaluation(x, self.dim_x)
+        output_kernel = np.zeros((self.kernel.shape[0], eval_pos["x"].data.shape[0], self.dim_x, self.dim_x))
+        if "elem" not in eval_pos.data_vars:
+            eval_pos.update({"elem": (["time"], self.element_finder.find(x))})
         loc_groups = eval_pos.groupby("elem")
         group_inds = eval_pos.groupby("elem").groups
         for k, grouped_xva in list(loc_groups):

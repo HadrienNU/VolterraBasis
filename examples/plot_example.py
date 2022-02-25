@@ -41,7 +41,7 @@ print(time.shape, kernel.shape)
 # To find a correct parametrization of the space
 bins = np.histogram_bin_edges(xvaf["x"], bins=15)
 xfa = (bins[1:] + bins[:-1]) / 2.0
-force = mymem.dU(xfa)
+force = mymem.force_eval(xfa)
 
 
 # Compute noise

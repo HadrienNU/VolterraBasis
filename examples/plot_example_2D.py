@@ -49,7 +49,7 @@ bins = np.histogram_bin_edges(xvaf["x"], bins=15)
 xfa = (bins[1:] + bins[:-1]) / 2.0
 x, y = np.meshgrid(xfa, xfa)
 X = np.vstack((x.flatten(), y.flatten())).T
-force = mymem.dU(X)
+force = mymem.force_eval(X)
 
 # Compute noise
 time_noise, noise_reconstructed, _, _, _ = mymem.compute_noise(xva_list[0], trunc_kernel=200)

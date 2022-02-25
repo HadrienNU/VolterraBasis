@@ -62,12 +62,6 @@ potential = mymem.integrate_vector_field(basis_pot)
 # mymem.compute_kernel(method="rectangular")  # Do matrix inversion in the python code
 # time, kernel = mymem.kernel_eval([[1.5, 1.0], [2.0, 1.5], [2.5, 1.0]])
 # print(time.shape, kernel.shape)
-# # To find a correct parametrization of the space
-# bins = np.histogram_bin_edges(xvaf["x"], bins=15)
-# xfa = (bins[1:] + bins[:-1]) / 2.0
-# x, y = np.meshgrid(xfa, xfa)
-# X = np.vstack((x.flatten(), y.flatten())).T
-# force = mymem.dU(X)
 #
 # # Compute noise
 # time_noise, noise_reconstructed, _, _, _ = mymem.compute_noise(xvaf, trunc_kernel=200)

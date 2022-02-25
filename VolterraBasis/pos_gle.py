@@ -6,6 +6,17 @@ from .fkernel import kernel_first_kind_trapz, kernel_first_kind_rect, kernel_fir
 from .correlation import correlation_1D, correlation_ND
 
 
+def _convert_input_array_for_evaluation(array, dim_x):
+    """
+    Take input and return xarray Dataset with correct shape
+    """
+    if isinstance(array, xr.Dataset):  # TODO add check on dimension of array
+        return array
+    else:
+        x = np.asarray(array).reshape(-1, dim_x)
+        return xr.Dataset({"x": (["time", "dim_x"], x)})
+
+
 class Pos_gle_base(object):
     """
     The main class for the position dependent memory extraction,
@@ -302,7 +313,7 @@ class Pos_gle_base(object):
             k0 = np.matmul(np.linalg.inv(self.bkbkcorrw[0, :, :]), self.dotbkdxcorrw[0, :, :])
             if self.verbose:
                 print("K0", k0)
-                print("Gram", self.bkbkcorrw[0, :, :])
+                # print("Gram", self.bkbkcorrw[0, :, :])
                 # print("Gram eigs", np.linalg.eigvals(self.bkbkcorrw[0, :, :]))
         if method == "rectangular":
             self.kernel = kernel_first_kind_rect(self.bkbkcorrw, self.bkdxcorrw, dt)
@@ -398,14 +409,14 @@ class Pos_gle_base(object):
             # memory[n] = -1 * to_integrate.sum() * dt
         return time, xva["a"].data - force - memory, xva["a"].data, force, memory
 
-    def dU(self, x):
+    def force_eval(self, x):
         """
         Evaluate the force at given points x
         """
         if self.force_coeff is None:
             raise Exception("Mean force has not been computed.")
-        E = self.basis_vector(xr.Dataset({"x": (["time", "dim_x"], np.asarray(x).reshape(-1, self.dim_x))}), compute_for="force")
-        return -1 * np.einsum("ik,kl->il", E, self.force_coeff)  # Return the force as array (nb of evalution point x dim_x)
+        E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="force")
+        return np.einsum("ik,kl->il", E, self.force_coeff)  # Return the force as array (nb of evalution point x dim_x)
 
     def kernel_eval(self, x):
         """
@@ -413,7 +424,7 @@ class Pos_gle_base(object):
         """
         if self.kernel is None:
             raise Exception("Kernel has not been computed.")
-        E = self.basis_vector(xr.Dataset({"x": (["time", "dim_x"], np.asarray(x).reshape(-1, self.dim_x))}), compute_for="kernel")
+        E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")
         if self.rank_projection:
             E = np.einsum("kj,ijd->ikd", self.P_range, E)
         return self.time, np.einsum("jkd,ikl->ijld", E, self.kernel)  # Return the kernel as array (time x nb of evalution point x dim_x x dim_x)
@@ -512,19 +523,19 @@ class Pos_gle_with_friction(Pos_gle_base):
         else:
             raise ValueError("Basis evaluation goal not specified")
 
-    def dU(self, x):
+    def force_eval(self, x):
         if self.force_coeff is None:
             raise Exception("Mean force has not been computed.")
-        E = self.basis_vector(xr.Dataset({"x": (["time", "dim_x"], np.asarray(x).reshape(-1, self.dim_x))}), compute_for="force_eval")
-        return -1 * np.einsum("ik,kl->il", E, self.force_coeff[: self.N_basis_elt])  # -1 * np.matmul(self.force_coeff[: self.N_basis_elt, :], E.T)
+        E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="force_eval")
+        return np.einsum("ik,kl->il", E, self.force_coeff[: self.N_basis_elt])  # -1 * np.matmul(self.force_coeff[: self.N_basis_elt, :], E.T)
 
-    def friction_force(self, x):
+    def friction_force_eval(self, x):
         """
         Compute the term of friction, that should be zero
         """
         if self.force_coeff is None:
             raise Exception("Mean force has not been computed.")
-        E = self.basis_vector(xr.Dataset({"x": (["time", "dim_x"], np.asarray(x).reshape(-1, self.dim_x))}), compute_for="kernel")
+        E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")
         return np.einsum("ikd,kl->ild", E, self.force_coeff[self.N_basis_elt :])  # np.matmul(self.force_coeff[self.N_basis_elt :, :], E.T)
 
 
