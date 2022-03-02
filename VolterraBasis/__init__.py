@@ -37,7 +37,7 @@ def xframe(x, time, v=None, fix_time=False, round_time=1.0e-4, dt=-1):
     if fix_time:
         if dt < 0:
             dt = np.round((time[1] - time[0]) / round_time) * round_time
-        time = np.linspace(0.0, dt * (x.size - 1), x.size)
+        time = np.linspace(0.0, dt * (x.shape[0] - 1), x.shape[0])
         time[1] = dt
     else:
         dt = time[1] - time[0]

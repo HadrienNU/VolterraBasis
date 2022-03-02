@@ -69,7 +69,7 @@ class ElementFinder:
         """
         Say which point are inside the element
         """
-        return (X[0] >= 0) * (X[1] >= 0) * (1 - X[0] - X[1] >= -np.finfo(X.dtype).eps)
+        return (X[0] >= -np.finfo(X.dtype).eps) * (X[1] >= -np.finfo(X.dtype).eps) * (1 - X[0] - X[1] >= -np.finfo(X.dtype).eps)
 
     def inside_3D(X):
         """

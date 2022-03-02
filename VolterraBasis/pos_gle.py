@@ -188,7 +188,7 @@ class Pos_gle_base(object):
 
     def compute_effective_masse(self):
         """
-        Return effective mass matrix computed from equipartition with the velocity.
+        Return effective mass computed from equipartition with the velocity.
         """
         if self.verbose:
             print("Calculate effective mass...")
@@ -202,6 +202,18 @@ class Pos_gle_base(object):
         if self.verbose:
             print("Found effective mass:", self.mass)
         return self.mass
+
+    def compute_kernel_gram(self):
+        """
+        Return gram matrix of the kernel part of the basis.
+        """
+        if self.verbose:
+            print("Calculate kernel gram...")
+        avg_gram = np.zeros((self.N_basis_elt_kernel, self.N_basis_elt_kernel))
+        for weight, xva in zip(self.weights, self.xva_list):
+            _, E, _ = self.basis_vector(xva, compute_for="corrs")
+            avg_gram += np.matmul(E.T, E) / self.weightsum
+        return avg_gram
 
     def set_zero_force(self):
         self.force_coeff = np.zeros((self.N_basis_elt_force, self.dim_x))
@@ -401,6 +413,58 @@ class Pos_gle_base(object):
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
         return time, xva["a"].data - force - memory, xva["a"].data, force, memory
 
+    def compute_projection_on_basis(self, var="obs", rank_tol=None, method="second_kind_trapz", k0=None):
+        """
+        Computes the mean force from the trajectories.
+        """
+        if self.verbose:
+            print("Calculate projection of observable {}...".format(var))
+        dim_obs = self.xva_list[0][var].data.shape[1]
+        avg_proj_f = np.zeros((self.N_basis_elt_force, dim_obs))
+        avg_gram_f = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
+        for weight, xva in zip(self.weights, self.xva_list):
+            E_force = self.basis_vector(xva, compute_for="force")
+            avg_proj_f += np.matmul(E_force.T, xva[var].data) / self.weightsum
+            avg_gram_f += np.matmul(E_force.T, E_force) / self.weightsum
+        projection = np.matmul(np.linalg.inv(avg_gram_f), avg_proj_f)
+
+        time = self.xva_list[0]["time"].data[: self.trunc_ind]
+        dt = self.xva_list[0].attrs["dt"]
+        time = (time - time[0]).reshape(-1, 1)  # Set zero time
+
+        bkobscorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, dim_obs))
+
+        for weight, xva in zip(self.weights, self.xva_list):
+            E_force, E, dE = self.basis_vector(xva)
+            mean_proj = np.matmul(E_force, projection)
+            try:
+                bkobscorrw += weight * correlation_ND(dE, (xva[var].data - mean_proj), trunc=self.trunc_ind)
+            except MemoryError:  # If too big slow way
+                if self.verbose:
+                    print("Too many basis function, compute correlations one by one (slow)")
+                for n in range(E.shape[1]):
+                    for d in range(dim_obs):
+                        bkobscorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva[var].data[:, d] - mean_proj[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
+
+        bkobscorrw /= self.weightsum
+        if self.rank_projection:
+            bkobscorrw = np.einsum("kj,ijd->ikd", self.P_range, bkobscorrw)
+
+        if k0 is None:  # Then we should compute initial value from time derivative at zero
+            k0 = np.matmul(np.linalg.inv(self.bkbkcorrw[0, :, :]), bkobscorrw[0, :, :])
+        if method == "second_kind_rect":
+            if self.dotbkbkcorrw is None:
+                raise Exception("Need correlation with derivative functions to compute the kernel using this method, please use other method.")
+            orth_corr = kernel_second_kind_rect(k0, self.bkbkcorrw[0, :, :], self.dotbkbkcorrw, bkobscorrw, dt)
+        elif method == "second_kind_trapz":
+            if self.dotbkbkcorrw is None:
+                raise Exception("Need correlation with derivative functions to compute the kernel using this method, please use other method.")
+            orth_corr = kernel_second_kind_trapz(k0, self.bkbkcorrw[0, :, :], self.dotbkbkcorrw, bkobscorrw, dt)
+        else:
+            raise Exception("Method for volterra inversion is not in  {second_kind_rect,second_kind_trapz}")
+
+        return projection, time, bkobscorrw, orth_corr
+
     def force_eval(self, x):
         """
         Evaluate the force at given points x
@@ -483,7 +547,7 @@ class Pos_gle(Pos_gle_base):
 
 class Pos_gle_with_friction(Pos_gle_base):
     """
-    A derived class in which we don't enforce zero friction
+    A derived class in which we don't enforce zero instantaneous friction
     """
 
     def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
