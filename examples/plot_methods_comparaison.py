@@ -13,10 +13,6 @@ Comparaison of the various algorithm for inversion of the Volterra Integral equa
 import numpy as np
 import matplotlib.pyplot as plt
 
-import sys
-
-sys.path.insert(0, "../")  # To use local version of the library, remove when installed
-
 import VolterraBasis as vb
 import VolterraBasis.basis as bf
 
