@@ -2,7 +2,8 @@ import numpy as np
 import xarray as xr
 from scipy.integrate import trapezoid
 
-from .fkernel import kernel_first_kind_trapz, kernel_first_kind_rect, kernel_first_kind_midpoint, kernel_second_kind_rect, kernel_second_kind_trapz, memory_rect, memory_trapz
+from .fkernel import kernel_first_kind_trapz, kernel_first_kind_rect, kernel_first_kind_midpoint, kernel_second_kind_rect, kernel_second_kind_trapz
+from .fkernel import memory_rect, memory_trapz, corrs_rect, corrs_trapz
 from .correlation import correlation_1D, correlation_ND
 
 
@@ -382,7 +383,7 @@ class Pos_gle_base(object):
         #     res_int += np.einsum("jk,ik->ij", self.bkbkcorrw[0, :, :], self.kernel)
         return time - time[0], res_int
 
-    def compute_noise(self, xva, trunc_kernel=None):
+    def compute_noise(self, xva, trunc_kernel=None, start_point=0, end_point=None):
         """
         From a trajectory get the noise.
 
@@ -399,7 +400,9 @@ class Pos_gle_base(object):
             raise Exception("Mean force has not been computed.")
         if trunc_kernel is None:
             trunc_kernel = self.trunc_ind
-        time = xva["time"].data
+        time_0 = xva["time"].data[0]
+        xva = xva.isel(time=slice(start_point, end_point))
+        time = xva["time"].data - time_0
         dt = time[1] - time[0]
         E_force, E, _ = self.basis_vector(xva)
         if self.rank_projection:
@@ -412,6 +415,33 @@ class Pos_gle_base(object):
         else:
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
         return time, xva["a"].data - force - memory, xva["a"].data, force, memory
+
+    def compute_corrs_w_noise(self, xva, left_op):
+        """
+        Compute correlation between noise and left_op
+
+        Parameters
+        ----------
+        xva : xarray dataset (['time', 'x', 'v', 'a']) .
+            Use compute_va() or see its output for format details.
+            Input trajectory to compute noise.
+        """
+        if self.force_coeff is None:
+            raise Exception("Mean force has not been computed.")
+
+        dt = xva["time"].data[1] - xva["time"].data[0]
+        E_force, E, _ = self.basis_vector(xva)
+        if self.rank_projection:
+            E = np.einsum("kj,ij->ik", self.P_range, E)
+
+        noise = xva["a"].data - np.matmul(E_force, self.force_coeff)
+
+        if self.method in ["rect", "rectangular", "second_kind_rect"] or self.method is None:
+            return self.time, corrs_rect(noise, self.kernel, E, left_op, dt)
+        elif self.method == "trapz" or self.method == "second_kind_trapz":
+            return self.time[:-1], corrs_trapz(noise, self.kernel, E, left_op, dt)
+        else:
+            raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
 
     def compute_projection_on_basis(self, var="obs", rank_tol=None, method="second_kind_trapz", k0=None):
         """

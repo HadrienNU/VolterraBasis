@@ -360,3 +360,58 @@ subroutine memory_trapz(lenTraj,len_mem, dim_basis, dim_x, memory, kernel, E, dt
 
 
 end subroutine memory_trapz
+
+subroutine corrs_rect(lenTraj,len_mem, dim_basis, dim_x, dim_obs, noise_init, kernel, E, left_op, corrs, dt)
+  implicit none
+  integer,intent(in)::lenTraj,len_mem,dim_basis,dim_x,dim_obs
+  double precision,dimension(0:lenTraj, dim_x),intent(in)::noise_init
+  double precision,dimension(0:len_mem, dim_basis,dim_x),intent(in)::kernel
+  double precision,dimension(0:lenTraj, dim_basis),intent(in)::E
+  double precision,dimension(0:lenTraj, dim_obs),intent(in)::left_op
+  double precision,dimension(0:len_mem, dim_obs,dim_x),intent(out)::corrs
+  double precision,intent(in)::dt
+  double precision,dimension(0:lenTraj, dim_x)::noise
+  integer::n,k,l
+
+  corrs=0.
+  noise=noise_init
+
+  do n=0,len_mem
+    do k=1,dim_obs
+      do l = 1,dim_x
+        corrs(n, k, l) = sum(left_op(:lenTraj-n, k) * noise(:lenTraj-n,l),dim=1) / (lenTraj-n+1)
+      end do
+    end do
+    noise(: lenTraj - n - 1,:) = noise(1 : lenTraj - n,:) + dt * matmul(E(1 : lenTraj - n,:) , kernel(n, :,:))
+  end do
+
+
+end subroutine corrs_rect
+
+subroutine corrs_trapz(lenTraj,len_mem, dim_basis, dim_x, dim_obs, noise_init, kernel, E, left_op, corrs, dt)
+  implicit none
+  integer,intent(in)::lenTraj,len_mem,dim_basis,dim_x,dim_obs
+  double precision,dimension(0:lenTraj, dim_x),intent(in)::noise_init
+  double precision,dimension(0:len_mem, dim_basis,dim_x),intent(in)::kernel
+  double precision,dimension(0:lenTraj, dim_basis),intent(in)::E
+  double precision,dimension(0:lenTraj, dim_obs),intent(in)::left_op
+  double precision,dimension(0:len_mem-1, dim_obs,dim_x),intent(out)::corrs
+  double precision,intent(in)::dt
+  double precision,dimension(0:lenTraj, dim_x)::noise
+  integer::n,k,l
+
+  corrs=0.
+  noise=noise_init
+
+  do n=0,len_mem-1
+    do k=1,dim_obs
+      do l = 1,dim_x
+        corrs(n, k, l) = sum(left_op(:lenTraj-n, k) * noise(:lenTraj-n,l),dim=1) / (lenTraj-n+1)
+      end do
+    end do
+    noise(: lenTraj - n - 1,:) = noise(1 : lenTraj - n,:) + 0.5*dt * matmul(E(1 : lenTraj - n,:) , kernel(n, :,:)) &
+    +0.5*dt*matmul(E( : lenTraj - n-1,:) , kernel(n+1, :,:))
+  end do
+
+
+end subroutine corrs_trapz

@@ -89,7 +89,7 @@ class FourierFeatures(TransformerMixin):
 
     def __init__(self, order=1, freq=1.0, remove_const=True):
         """
-        Providing a numpy polynomial class via polynom keyword allow to change polynomial type.
+        Set number of term via order keyword and base frequency via freq keyword
         """
         self.order = 2 * order + 1
         self.freq = freq
