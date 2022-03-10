@@ -1,5 +1,4 @@
 import numpy as np
-import xarray as xr
 from scipy.integrate import trapezoid
 from skfem.assembly.basis import Basis
 from skfem import LinearForm, BilinearForm, solve_linear
@@ -8,7 +7,7 @@ from scipy.spatial import cKDTree
 from itertools import product
 from scipy.sparse import coo_matrix
 
-from .pos_gle import Pos_gle_base, _convert_input_array_for_evaluation
+from .pos_gle_base import Pos_gle_base, _convert_input_array_for_evaluation
 
 
 class ElementFinder:

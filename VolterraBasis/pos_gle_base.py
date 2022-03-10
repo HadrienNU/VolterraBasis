@@ -24,7 +24,7 @@ class Pos_gle_base(object):
     holding all data and the extracted memory kernels.
     """
 
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, **kwargs):
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, L_obs="a", **kwargs):
         """
         Create an instance of the Pos_gle class.
 
@@ -49,7 +49,12 @@ class Pos_gle_base(object):
         trunc : float, default=1.0
             Truncate all correlation functions and the memory kernel after this
             time value.
+        L_obs: str, default= "a"
+            Name of the column containing the time derivative of the observable
         """
+        self.L_obs = L_obs
+        self.set_of_obs = ["x", "v", self.L_obs]
+
         self._do_check(xva_arg)  # Do some check on the trajectories
         self._check_basis(basis)  # Do check on basis
         # Create all internal variables
@@ -109,11 +114,11 @@ class Pos_gle_base(object):
             else:
                 self.xva_list = xva_arg
             for xva in self.xva_list:
-                for col in ["x", "v", "a"]:
+                for col in self.set_of_obs:
                     if col not in xva.data_vars:
-                        raise Exception("Please provide txva dataset, " "or an iterable collection (i.e. list) " "of txva dataset.")
+                        raise Exception("Please provide time,{} dataset, " "or an iterable collection (i.e. list) " "of time,{} dataset.").format(self.set_of_obs, self.set_of_obs)
                 if "time" not in xva.dims:
-                    raise Exception("Time is not a coordinate. Please provide txva dataset, " "or an iterable collection (i.e. list) " "of txva dataset.")
+                    raise Exception("Time is not a coordinate. Please provide dataset with time, " "or an iterable collection (i.e. list) " "of dataset with time.")
                 if "dt" not in xva.attrs:
                     raise Exception("Timestep not in dataset attrs")
         else:
@@ -229,7 +234,7 @@ class Pos_gle_base(object):
         avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
         for weight, xva in zip(self.weights, self.xva_list):
             E = self.basis_vector(xva, compute_for="force")
-            avg_disp += np.matmul(E.T, xva["a"].data) / self.weightsum
+            avg_disp += np.matmul(E.T, xva[self.L_obs].data) / self.weightsum
             avg_gram += np.matmul(E.T, E) / self.weightsum
         self.force_coeff = np.matmul(np.linalg.inv(avg_gram), avg_disp)
 
@@ -259,12 +264,12 @@ class Pos_gle_base(object):
             E_force, E, dE = self.basis_vector(xva)
             # print(E_force.shape, E.shape, dE.shape)
             force = np.matmul(E_force, self.force_coeff)
-            # print(force.shape, xva["a"].data.shape)
-            # print(self.bkdxcorrw.shape, correlation_ND(E, (xva["a"].data - force)).shape)
+            # print(force.shape, xva[self.L_obs].data.shape)
+            # print(self.bkdxcorrw.shape, correlation_ND(E, (xva[self.L_obs].data - force)).shape)
             if not large:
                 try:
-                    self.bkdxcorrw += weight * correlation_ND(E, (xva["a"].data - force), trunc=self.trunc_ind)
-                    self.dotbkdxcorrw += weight * correlation_ND(dE, (xva["a"].data - force), trunc=self.trunc_ind)
+                    self.bkdxcorrw += weight * correlation_ND(E, (xva[self.L_obs].data - force), trunc=self.trunc_ind)
+                    self.dotbkdxcorrw += weight * correlation_ND(dE, (xva[self.L_obs].data - force), trunc=self.trunc_ind)
                     self.bkbkcorrw += weight * correlation_ND(E, trunc=self.trunc_ind)
                     self.dotbkbkcorrw += weight * correlation_ND(dE, E, trunc=self.trunc_ind)
                 except MemoryError:  # If too big slow way
@@ -272,16 +277,16 @@ class Pos_gle_base(object):
                         print("Too many basis function, compute correlations one by one (slow)")
                     for n in range(E.shape[1]):
                         for d in range(self.dim_x):
-                            self.bkdxcorrw[:, n, d] += weight * correlation_1D(E[:, n], xva["a"].data[:, d] - force[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
-                            self.dotbkdxcorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva["a"].data[:, d] - force[:, d], trunc=self.trunc_ind)
+                            self.bkdxcorrw[:, n, d] += weight * correlation_1D(E[:, n], xva[self.L_obs].data[:, d] - force[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
+                            self.dotbkdxcorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva[self.L_obs].data[:, d] - force[:, d], trunc=self.trunc_ind)
                         for m in range(E.shape[1]):
                             self.bkbkcorrw[:, n, m] += weight * correlation_1D(E[:, n], E[:, m], trunc=self.trunc_ind)
                             self.dotbkbkcorrw[:, n, m] += weight * correlation_1D(dE[:, n], E[:, m], trunc=self.trunc_ind)
             else:
                 for n in range(E.shape[1]):
                     for d in range(self.dim_x):
-                        self.bkdxcorrw[:, n, d] += weight * correlation_1D(E[:, n], xva["a"].data[:, d] - force[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
-                        self.dotbkdxcorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva["a"].data[:, d] - force[:, d], trunc=self.trunc_ind)
+                        self.bkdxcorrw[:, n, d] += weight * correlation_1D(E[:, n], xva[self.L_obs].data[:, d] - force[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
+                        self.dotbkdxcorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva[self.L_obs].data[:, d] - force[:, d], trunc=self.trunc_ind)
                     for m in range(E.shape[1]):
                         self.bkbkcorrw[:, n, m] += weight * correlation_1D(E[:, n], E[:, m], trunc=self.trunc_ind)
                         self.dotbkbkcorrw[:, n, m] += weight * correlation_1D(dE[:, n], E[:, m], trunc=self.trunc_ind)
@@ -414,7 +419,7 @@ class Pos_gle_base(object):
             memory = memory_trapz(self.kernel[:trunc_kernel], E, dt)
         else:
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
-        return time, xva["a"].data - force - memory, xva["a"].data, force, memory
+        return time, xva[self.L_obs].data - force - memory, xva[self.L_obs].data, force, memory
 
     def compute_corrs_w_noise(self, xva, left_op):
         """
@@ -434,7 +439,7 @@ class Pos_gle_base(object):
         if self.rank_projection:
             E = np.einsum("kj,ij->ik", self.P_range, E)
 
-        noise = xva["a"].data - np.matmul(E_force, self.force_coeff)
+        noise = xva[self.L_obs].data - np.matmul(E_force, self.force_coeff)
 
         if self.method in ["rect", "rectangular", "second_kind_rect"] or self.method is None:
             return self.time, corrs_rect(noise, self.kernel, E, left_op, dt)
@@ -514,209 +519,3 @@ class Pos_gle_base(object):
         if self.rank_projection:
             E = np.einsum("kj,ijd->ikd", self.P_range, E)
         return self.time, np.einsum("jkd,ikl->ijld", E, self.kernel)  # Return the kernel as array (time x nb of evalution point x dim_x x dim_x)
-
-
-class Pos_gle(Pos_gle_base):
-    """
-    The main class for the position dependent memory extraction,
-    holding all data and the extracted memory kernels.
-    """
-
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
-        """
-        Create an instance of the Pos_gle class.
-
-        Parameters
-        ----------
-        xva_arg : xarray dataset (['time', 'x', 'v', 'a']) or list of datasets.
-            Use compute_va() or see its output for format details.
-            The timeseries to analyze. It should be either a xarray timeseries
-            or a listlike collection of them.
-        basis :  scikit-learn transformer to get the element of the basis
-                This class should implement, basis() and deriv() function
-                and deal with periodicity of the data.
-                If a fit() method is defined, it will be called at initialization
-        saveall : bool, default=True
-            Whether to save all output functions.
-        prefix : str
-            Prefix for the saved output functions.
-        verbose : bool, default=True
-            Set verbosity.
-        kT : float, default=2.494
-            Numerical value for kT.
-        trunc : float, default=1.0
-            Truncate all correlation functions and the memory kernel after this
-            time value.
-        """
-        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
-        self.N_basis_elt_force = self.N_basis_elt
-        self.N_basis_elt_kernel = self.N_basis_elt - int(self.basis.const_removed) * self.dim_x
-        self.rank_projection = not self.basis.const_removed
-
-    def basis_vector(self, xva, compute_for="corrs"):
-        """
-        From one trajectory compute the basis element.
-        """
-        # We have to deal with the multidimensionnal case as well
-        bk = self.basis.basis(xva["x"].data)
-        # if self.include_const:
-        #     bk = np.concatenate((np.ones((bk.shape[0], 1)), bk), axis=1)
-        if compute_for == "force":
-            return bk
-        dbk = self.basis.deriv(xva["x"].data)
-        if compute_for == "kernel":  # For kernel evaluation
-            return dbk
-        elif compute_for == "corrs":
-            ddbk = self.basis.hessian(xva["x"].data)
-            E = np.einsum("nld,nd->nl", dbk, xva["v"].data)
-            dE = np.einsum("nld,nd->nl", dbk, xva["a"].data) + np.einsum("nlcd,nc,nd->nl", ddbk, xva["v"].data, xva["v"].data)
-            return bk, E, dE
-        else:
-            raise ValueError("Basis evaluation goal not specified")
-
-
-class Pos_gle_with_friction(Pos_gle_base):
-    """
-    A derived class in which we don't enforce zero instantaneous friction
-    """
-
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
-        Pos_gle.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
-        self.N_basis_elt_force = 2 * self.N_basis_elt - int(self.basis.const_removed) * self.dim_x
-        self.N_basis_elt_kernel = self.N_basis_elt - int(self.basis.const_removed) * self.dim_x
-        self.rank_projection = not self.basis.const_removed
-
-    def basis_vector(self, xva, compute_for="corrs"):
-        """
-        From one trajectory compute the basis element.
-        """
-        # We have to deal with the multidimensionnal case as well
-        bk = self.basis.basis(xva["x"].data)
-        if compute_for == "force_eval":
-            return bk
-        dbk = self.basis.deriv(xva["x"].data)
-        if compute_for == "kernel":  # To have the term proportional to velocity
-            return dbk
-
-        Evel = np.einsum("nld,nd->nl", dbk, xva["v"].data)
-        E = np.concatenate((bk, Evel), axis=1)
-        if compute_for == "force":
-            return E
-        elif compute_for == "corrs":
-            ddbk = self.basis.hessian(xva["x"].data)
-            dE = np.einsum("nld,nd->nl", dbk, xva["a"].data) + np.einsum("nlcd,nc,nd->nl", ddbk, xva["v"].data, xva["v"].data)
-            return E, Evel, dE
-        else:
-            raise ValueError("Basis evaluation goal not specified")
-
-    def force_eval(self, x):
-        if self.force_coeff is None:
-            raise Exception("Mean force has not been computed.")
-        E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="force_eval")
-        return np.einsum("ik,kl->il", E, self.force_coeff[: self.N_basis_elt])  # -1 * np.matmul(self.force_coeff[: self.N_basis_elt, :], E.T)
-
-    def friction_force_eval(self, x):
-        """
-        Compute the term of friction, that should be zero
-        """
-        if self.force_coeff is None:
-            raise Exception("Mean force has not been computed.")
-        E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")
-        return np.einsum("ikd,kl->ild", E, self.force_coeff[self.N_basis_elt :])  # np.matmul(self.force_coeff[self.N_basis_elt :, :], E.T)
-
-
-class Pos_gle_no_vel_basis(Pos_gle_base):
-    """
-    A derived class in which we don't enforce the zero values
-    """
-
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
-        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
-        self.N_basis_elt_force = self.N_basis_elt
-        self.N_basis_elt_kernel = self.N_basis_elt
-        if self.basis.const_removed:
-            self.basis.const_removed = False
-            print("Warning: remove_const on basis function have been set to False.")
-
-    def basis_vector(self, xva, compute_for="corrs"):
-        """
-        From one trajectory compute the basis element.
-        """
-        # We have to deal with the multidimensionnal case as well
-        E = self.basis.basis(xva["x"].data)
-        if compute_for == "force":
-            return E
-        elif compute_for == "kernel":
-            # Extend the basis for multidim value
-            return E.reshape(-1, self.N_basis_elt_kernel, 1)
-        elif compute_for == "corrs":
-            dbk = self.basis.deriv(xva["x"].data)
-            dE = np.einsum("nld,nd->nl", dbk, xva["v"].data)
-            return E, E, dE
-        else:
-            raise ValueError("Basis evaluation goal not specified")
-
-
-class Pos_gle_const_kernel(Pos_gle_base):
-    """
-    A derived class in which we the kernel is computed independent of the position
-    """
-
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
-        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
-        self.N_basis_elt_force = self.N_basis_elt
-        self.N_basis_elt_kernel = self.dim_x
-
-    def basis_vector(self, xva, compute_for="corrs"):
-        """
-        From one trajectory compute the basis element.
-        """
-        # We have to deal with the multidimensionnal case as well
-        bk = self.basis.basis(xva["x"].data)
-        # if self.include_const:
-        #     bk = np.concatenate((np.ones((bk.shape[0], 1)), bk), axis=1)
-        if compute_for == "force":
-            return bk
-        if compute_for == "kernel":  # For kernel evaluation
-            grad = np.zeros((bk.shape[0], self.dim_x, self.dim_x))
-            for i in range(self.dim_x):
-                grad[:, i, i] = 1.0
-            return grad
-        elif compute_for == "corrs":
-            return bk, xva["v"].data, xva["a"].data
-        else:
-            raise ValueError("Basis evaluation goal not specified")
-
-
-class Pos_gle_hybrid(Pos_gle_base):
-    """
-    Implement the hybrid projector of arXiv:2202.01922
-    """
-
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
-        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
-        self.N_basis_elt_force = self.N_basis_elt
-        self.N_basis_elt_kernel = self.N_basis_elt + 1
-        if self.basis.const_removed:
-            self.basis.const_removed = False
-            print("Warning: remove_const on basis function have been set to False.")
-
-    def basis_vector(self, xva, compute_for="corrs"):
-        """
-        From one trajectory compute the basis element.
-        """
-        # We have to deal with the multidimensionnal case as well
-        bk = self.basis.basis(xva["x"].data)
-        if compute_for == "force":
-            return bk
-        elif compute_for == "kernel":
-            # Extend the basis for multidim value
-            E = np.concatenate((np.ones_like(xva["x"].data), bk), axis=1)
-            return E.reshape(-1, self.N_basis_elt_kernel, 1)
-        elif compute_for == "corrs":
-            E = np.concatenate((xva["v"].data, bk), axis=1)
-            dbk = np.einsum("nld,nd->nl", self.basis.deriv(xva["x"].data), xva["v"].data)
-            dE = np.concatenate((xva["a"].data, dbk), axis=1)
-            return bk, E, dE
-        else:
-            raise ValueError("Basis evaluation goal not specified")
