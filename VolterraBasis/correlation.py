@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def correlation1D(a, b=None, subtract_mean=False, trunc=None):
+def correlation_1D(a, b=None, subtract_mean=False, trunc=None):
     meana = int(subtract_mean) * np.mean(a)
     # a2 = np.append(a - meana, np.zeros(2 ** int(np.ceil((np.log(len(a)) / np.log(2)))) - len(a)))
     # data_a = np.append(a2, np.zeros(len(a2)))

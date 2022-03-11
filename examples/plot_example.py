@@ -12,10 +12,6 @@ How to run memory kernel estimation
 import numpy as np
 import matplotlib.pyplot as plt
 
-import sys
-
-sys.path.insert(0, "../")  # To use local version of the library, remove when installed
-
 import VolterraBasis as vb
 import VolterraBasis.basis as bf
 
@@ -28,12 +24,12 @@ for i in range(1, trj.shape[1]):
     xva_list.append(xvaf)
 
 Nsplines = 10
-mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), trunc=10, kT=1.0, saveall=False)
+mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines, remove_const=True), trunc=10, kT=1.0, saveall=False)
 # mymem = vb.Pos_gle(xva_list, bf.PolynomialFeatures(deg=1), trunc=10, kT=1.0, saveall=False)
 # mymem = vb.Pos_gle(xva_list, bf.LinearFeatures(), trunc=10, kT=1.0, saveall=False)
 print("Dimension of observable", mymem.dim_x)
 mymem.compute_mean_force()
-# print(mymem.force_coeff)
+print(mymem.force_coeff)
 mymem.compute_corrs()
 mymem.compute_kernel(method="trapz")
 time, kernel = mymem.kernel_eval([1.5, 2.0, 2.5])
@@ -41,7 +37,7 @@ print(time.shape, kernel.shape)
 # To find a correct parametrization of the space
 bins = np.histogram_bin_edges(xvaf["x"], bins=15)
 xfa = (bins[1:] + bins[:-1]) / 2.0
-force = mymem.dU(xfa)
+force = mymem.force_eval(xfa)
 
 
 # Compute noise
