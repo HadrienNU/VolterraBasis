@@ -451,6 +451,7 @@ class Pos_gle_base(object):
     def compute_projection_on_basis(self, var="obs", rank_tol=None, method="second_kind_trapz", k0=None):
         """
         Computes the mean force from the trajectories.
+        #TODO Verifier qu'on peut supprimer cette fonction
         """
         if self.verbose:
             print("Calculate projection of observable {}...".format(var))
