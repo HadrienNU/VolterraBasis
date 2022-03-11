@@ -33,10 +33,11 @@ copyright = u"2020, MAESTRO"
 # built documents.
 #
 # The short X.Y version.
-from VolterraBasis import __version__
+# from VolterraBasis import __version__
 
 #
-version = __version__
+# version = __version__
+version = "2.1"
 # # The full version, including alpha/beta/rc tags.
 # release = __version__
 
