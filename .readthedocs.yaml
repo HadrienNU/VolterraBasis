@@ -9,8 +9,6 @@ sphinx:
    configuration: doc/conf.py
 python:
  install:
-  - method: pip
-    path: .
   - method: setuptools
     path: .
 conda:
