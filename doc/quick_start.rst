@@ -4,10 +4,31 @@ Quick Start
 
 This package aims at computing memory kernel when studying Generalized Langevin Equations (GLE).
 
+To run the code, you should first instanciate one of the Pos_gle class
+
+
+    >>> mymem = Pos_gle(trajs_list, basis)
+
+The mandatory arguments are a list of trajectories and a funcionnal basis.
+
+The list of trajectories should be created through the :meth:`VolterraBasis.xframe` method such as
+
+    >>> trj = np.loadtxt("example_lj.trj")
+    >>> xf = vb.xframe(trj[:, 1], trj[:, 0]) # First argument is trajectory, second is time
+    >>> xvaf = vb.compute_va(xf) #  Compute velocity and acceleration
+    >>> trajs_list=[xvaf]
+
+You should then compute mean force and correlation using
+
+    >>> mymem.compute_mean_force()
+    >>> mymem.compute_corrs()
+
 Inversion of Volterra Integral Equations
 ===================================================
 
+Computation of the memory kernel is obtained using
 
+    >>> mymem.compute_kernel()
 
 Several algorithms for the inversion of the Volterra Integral Equations are available. Please refer to P. Linz, “Numerical methods for Volterra integral equations of the first kind”, The Computer
 Journal 12, 393–397 (1969) for mathematical details.
@@ -27,7 +48,7 @@ Force and memory estimate
 -------------------------
 
 
-Once the mean force and memory have been computed, the value of the force and memory kernel at given position can be computed trought function :meth:`VolterraBasis.Pos_gle.dU` and :meth:`VolterraBasis.Pos_gle.kernel_eval`
+Once the mean force and memory have been computed, the value of the force and memory kernel at given position can be computed trought function :meth:`VolterraBasis.Pos_gle.force_eval` and :meth:`VolterraBasis.Pos_gle.kernel_eval`
 
 Choice of the form of the GLE
 -----------------------------

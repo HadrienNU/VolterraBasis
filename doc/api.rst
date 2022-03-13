@@ -18,7 +18,11 @@ Memory kernel estimation
 
    Pos_gle_no_vel_basis
 
+   Pos_gle_const_kernel
+
    Pos_gle_overdamped
+
+   Pos_gle_hybrid
 
 Basis Features
 ===============
