@@ -22,6 +22,7 @@ import sphinx_rtd_theme
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 # sys.path.insert(0, os.path.abspath('.'))
+sys.path.insert(0, os.path.abspath(".."))
 
 # -- Project information -----------------------------------------------------
 
@@ -33,11 +34,10 @@ copyright = u"2020, MAESTRO"
 # built documents.
 #
 # The short X.Y version.
-# from VolterraBasis import __version__
+from VolterraBasis import __version__
 
 #
-# version = __version__
-version = "2.1"
+version = __version__
 # # The full version, including alpha/beta/rc tags.
 # release = __version__
 
