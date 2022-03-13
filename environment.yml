@@ -9,3 +9,5 @@ dependencies:
   - libgfortran-ng
   - sphinx-gallery
   - numpydoc
+  - liblapack
+  - sphinx-autoapi
