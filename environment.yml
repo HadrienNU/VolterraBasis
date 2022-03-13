@@ -4,6 +4,7 @@ channels:
 dependencies:
   - numpy
   - scipy
+  - scikit-learn
   - xarray
   - compilers
   - libgfortran-ng
