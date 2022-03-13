@@ -28,4 +28,18 @@ ext_modules = [Extension(name="VolterraBasis.fkernel", sources=["VolterraBasis/f
 
 CLASSIFIERS = ["Intended Audience :: Science/Research", "License :: OSI Approved", "Programming Language :: Python", "Topic :: Scientific/Engineering", "Operating System :: Microsoft :: Windows", "Operating System :: POSIX", "Operating System :: Unix", "Operating System :: MacOS"]
 
-setup(name=DISTNAME, version=VERSION, description=DESCRIPTION, author=AUTHOR, author_email=AUTHOR_EMAIL, ext_modules=ext_modules, install_requires=INSTALL_REQUIRES, extras_require=EXTRAS_REQUIRE, classifiers=CLASSIFIERS, packages=setuptools.find_packages(), package_data={"": ["*.f90"]})
+setup(
+    name=DISTNAME,
+    version=VERSION,
+    url=URL,
+    download_url=DOWNLOAD_URL,
+    description=DESCRIPTION,
+    author=AUTHOR,
+    author_email=AUTHOR_EMAIL,
+    ext_modules=ext_modules,
+    install_requires=INSTALL_REQUIRES,
+    extras_require=EXTRAS_REQUIRE,
+    classifiers=CLASSIFIERS,
+    packages=setuptools.find_packages(),
+    package_data={"": ["*.f90"]},
+)
