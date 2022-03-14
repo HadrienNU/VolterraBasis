@@ -13,7 +13,8 @@ Installation
 
 Run
     >>> pip install git+https://github.com/HadrienNU/VolterraBasis.git
-to install
+to install.
+
 Getting Started
 ------------------
 
