@@ -47,6 +47,8 @@ Basis Features
 
    VolterraBasis.basis.PolynomialFeatures
 
+   VolterraBasis.basis.FourierFeatures
+
    VolterraBasis.basis.BSplineFeatures
 
    VolterraBasis.basis.SplineFctFeatures
