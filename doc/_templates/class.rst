@@ -5,6 +5,7 @@
 
 .. autoclass:: {{ objname }}
    :members:
+   :inherited-members:
    :special-members: __init__
 
 .. include:: {{module}}.{{objname}}.examples

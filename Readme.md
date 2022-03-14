@@ -10,7 +10,7 @@ Run
 
 to install, and see `examples/` to get started.
 
-To compile the documentation
+To compile the documentation (the code should be installed first)
 
 
     cd doc/

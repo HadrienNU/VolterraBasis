@@ -6,39 +6,70 @@
 Welcome to VolterraBasis's documentation!
 ============================================
 
-This project compute position-dependent memory kernel for Generalized Langevin Equations. Please refer to https://arxiv.org/abs/2201.02457 for a detailed description of the algorithm.  
+This project compute position-dependent memory kernel for Generalized Langevin Equations. Please refer to https://arxiv.org/abs/2201.02457 for a detailed description of the algorithm.
+
+Installation
+------------------
+
+Run
+    >>> pip install git+https://github.com/HadrienNU/VolterraBasis.git
+to install
+Getting Started
+------------------
+
+To run the code, you should first instanciate one of the Pos_gle class
 
 
-.. toctree::
-   :maxdepth: 2
-   :hidden:
-   :caption: Getting Started
+    >>> mymem = Pos_gle(trajs_list, basis)
 
-   quick_start
+The mandatory arguments are a list of trajectories and a funcionnal basis.
 
-.. toctree::
-   :maxdepth: 2
-   :hidden:
-   :caption: Documentation
+The list of trajectories should be created through the :meth:`VolterraBasis.xframe` method such as
 
-   api
+    >>> trj = np.loadtxt("example_lj.trj")
+    >>> xf = vb.xframe(trj[:, 1], trj[:, 0]) # First argument is trajectory, second is time
+    >>> xvaf = vb.compute_va(xf) #  Compute velocity and acceleration
+    >>> trajs_list=[xvaf]
 
-.. toctree::
-   :maxdepth: 2
-   :hidden:
-   :caption: Tutorial - Examples
+You should then compute mean force and correlation using
 
-   auto_examples/index
+    >>> mymem.compute_mean_force()
+    >>> mymem.compute_corrs()
 
-`Getting started <quick_start.html>`_
--------------------------------------
+Inversion of Volterra Integral Equations
+------------------------------------------------------
+
+Computation of the memory kernel is obtained using
+
+    >>> mymem.compute_kernel()
+
+Several algorithms for the inversion of the Volterra Integral Equations are available. Please refer to P. Linz, “Numerical methods for Volterra integral equations of the first kind”, The Computer
+Journal 12, 393–397 (1969) for mathematical details.
+
+Functionnal basis
+------------------
+
+The estimation of the memory kernel necessite the choice of a functionnal basis. Functional basis are implemented in :class:`VolterraBasis.basis` that could be imported and initialized as ::
+
+    >>> import VolterraBasis.basis as bf
+    >>> basis=bf.BSplineFeatures(15)
+
+Several options are available for the type of basis, please refer to the documentation. Although multidimensionnal trajectories can be analysed, not all functionnal basis are multidimensionnal.
 
 
-`API Documentation <api.html>`_
--------------------------------
+Force and memory estimate
+-------------------------
 
-The details of the API.
 
-`Examples <auto_examples/index.html>`_
---------------------------------------
+Once the mean force and memory have been computed, the value of the force and memory kernel at given position can be computed trought function :meth:`VolterraBasis.Pos_gle.force_eval` and :meth:`VolterraBasis.Pos_gle.kernel_eval`
 
+Choice of the form of the GLE
+-----------------------------
+
+Several options are available to choose the form of the GLE:
+
+* :class:`VolterraBasis.Pos_gle` implement the form of the GLE featured in Vroylandt and Monmarché with memory kernel linear in velocity.
+* :class:`VolterraBasis.Pos_gle_with_friction` is similar to the previous but don't assume that the instantaneous friction is zero.
+* :class:`VolterraBasis.Pos_gle_const_kernel`  is the traditionnal GLE with memory kernel linear in velocity and independant of position.
+* :class:`VolterraBasis.Pos_gle_no_vel_basis`  implement a GLE where the memory kernel has no dependance in velocity.
+* :class:`VolterraBasis.Pos_gle_overdamped` compute the memory kernel for an overdamped dynamics.
