@@ -2,8 +2,20 @@
 VolterraBasis API
 ####################
 
-
 .. currentmodule:: VolterraBasis
+
+
+Loading trajectories
+=========================
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   xframe
+
+   compute_va
+
+   compute_a
 
 Memory kernel estimation
 =========================

@@ -27,7 +27,7 @@ import sphinx_rtd_theme
 # -- Project information -----------------------------------------------------
 
 project = u"VolterraBasis"
-copyright = u"2020, MAESTRO"
+copyright = u"2020, Hadrien Vroylandt and MAESTRO project"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the

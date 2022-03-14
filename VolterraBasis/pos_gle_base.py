@@ -174,7 +174,15 @@ class Pos_gle_base(object):
     def basis_vector(self, xva, compute_for="corrs"):
         """
         From one trajectory compute the basis element.
-        To be implemented by the children classes
+        This is the main method that should be implemented by children class.
+        It take as argument a trajectory and should return the value of the basis function depending of the wanted case.
+        There is three case that should be implemented.
+
+        "force" : for the evaluation and computation of the mean force.
+
+        "kernel": for the evaluation of the kernel.
+
+        "corrs": for the computation of the correlation function.
         """
         raise NotImplementedError
 
