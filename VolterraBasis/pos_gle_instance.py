@@ -41,10 +41,6 @@ class Pos_gle(Pos_gle_base):
         self.rank_projection = not self.basis.const_removed
 
     def basis_vector(self, xva, compute_for="corrs"):
-        """
-        From one trajectory compute the basis element.
-        :meta private:
-        """
         # We have to deal with the multidimensionnal case as well
         bk = self.basis.basis(xva["x"].data)
         # if self.include_const:
@@ -75,10 +71,6 @@ class Pos_gle_with_friction(Pos_gle_base):
         self.rank_projection = not self.basis.const_removed
 
     def basis_vector(self, xva, compute_for="corrs"):
-        """
-        From one trajectory compute the basis element.
-        :meta private:
-        """
         # We have to deal with the multidimensionnal case as well
         bk = self.basis.basis(xva["x"].data)
         if compute_for == "force_eval":
@@ -99,6 +91,9 @@ class Pos_gle_with_friction(Pos_gle_base):
             raise ValueError("Basis evaluation goal not specified")
 
     def force_eval(self, x):
+        """
+        Evaluate the force for the position dependent part only
+        """
         if self.force_coeff is None:
             raise Exception("Mean force has not been computed.")
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="force_eval")
@@ -128,10 +123,6 @@ class Pos_gle_no_vel_basis(Pos_gle_base):
             print("Warning: remove_const on basis function have been set to False.")
 
     def basis_vector(self, xva, compute_for="corrs"):
-        """
-        From one trajectory compute the basis element.
-        :meta private:
-        """
         # We have to deal with the multidimensionnal case as well
         E = self.basis.basis(xva["x"].data)
         if compute_for == "force":
@@ -158,10 +149,6 @@ class Pos_gle_const_kernel(Pos_gle_base):
         self.N_basis_elt_kernel = self.dim_x
 
     def basis_vector(self, xva, compute_for="corrs"):
-        """
-        From one trajectory compute the basis element.
-        :meta private:
-        """
         # We have to deal with the multidimensionnal case as well
         bk = self.basis.basis(xva["x"].data)
         # if self.include_const:
@@ -193,10 +180,6 @@ class Pos_gle_hybrid(Pos_gle_base):
             print("Warning: remove_const on basis function have been set to False.")
 
     def basis_vector(self, xva, compute_for="corrs"):
-        """
-        From one trajectory compute the basis element.
-        :meta private:
-        """
         # We have to deal with the multidimensionnal case as well
         bk = self.basis.basis(xva["x"].data)
         if compute_for == "force":
@@ -246,10 +229,6 @@ class Pos_gle_overdamped(Pos_gle_base):
             print("Warning: remove_const on basis function have been set to False.")
 
     def basis_vector(self, xva, compute_for="corrs"):
-        """
-        From one trajectory compute the basis element.
-        :meta private:
-        """
         # We have to deal with the multidimensionnal case as well
         E = self.basis.basis(xva["x"].data)
         if compute_for == "force":
