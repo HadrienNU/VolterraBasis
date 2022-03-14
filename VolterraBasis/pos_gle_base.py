@@ -456,7 +456,7 @@ class Pos_gle_base(object):
         else:
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
 
-    def compute_projection_on_basis(self, var="obs", rank_tol=None, method="second_kind_trapz", k0=None):
+    def _compute_projection_on_basis(self, var="obs", rank_tol=None, method="second_kind_trapz", k0=None):
         """
         Computes the mean force from the trajectories.
         #TODO Verifier qu'on peut supprimer cette fonction
