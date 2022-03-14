@@ -113,10 +113,10 @@ class FourierFeatures(TransformerMixin):
             if n == 0:
                 features[:, istart:iend] = np.ones_like(X) / np.sqrt(2 * np.pi)
             elif n % 2 == 0:
-                print(n / 2)
+                # print(n / 2)
                 features[:, istart:iend] = np.cos(n / 2 * X * self.freq) / np.sqrt(np.pi)
             else:
-                print((n + 1) / 2)
+                # print((n + 1) / 2)
                 features[:, istart:iend] = np.sin((n + 1) / 2 * X * self.freq) / np.sqrt(np.pi)
         return features
 
