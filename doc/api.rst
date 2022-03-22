@@ -2,8 +2,20 @@
 VolterraBasis API
 ####################
 
-
 .. currentmodule:: VolterraBasis
+
+
+Loading trajectories
+=========================
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   xframe
+
+   compute_va
+
+   compute_a
 
 Memory kernel estimation
 =========================
@@ -18,7 +30,11 @@ Memory kernel estimation
 
    Pos_gle_no_vel_basis
 
+   Pos_gle_const_kernel
+
    Pos_gle_overdamped
+
+   Pos_gle_hybrid
 
 Basis Features
 ===============
@@ -30,6 +46,8 @@ Basis Features
    VolterraBasis.basis.LinearFeatures
 
    VolterraBasis.basis.PolynomialFeatures
+
+   VolterraBasis.basis.FourierFeatures
 
    VolterraBasis.basis.BSplineFeatures
 

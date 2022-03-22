@@ -174,7 +174,15 @@ class Pos_gle_base(object):
     def basis_vector(self, xva, compute_for="corrs"):
         """
         From one trajectory compute the basis element.
-        To be implemented by the children classes
+        This is the main method that should be implemented by children class.
+        It take as argument a trajectory and should return the value of the basis function depending of the wanted case.
+        There is three case that should be implemented.
+
+        "force" : for the evaluation and computation of the mean force.
+
+        "kernel": for the evaluation of the kernel.
+
+        "corrs": for the computation of the correlation function.
         """
         raise NotImplementedError
 
@@ -433,6 +441,8 @@ class Pos_gle_base(object):
         """
         if self.force_coeff is None:
             raise Exception("Mean force has not been computed.")
+        if self.kernel is None:
+            raise Exception("Kernel has not been computed.")
 
         dt = xva["time"].data[1] - xva["time"].data[0]
         E_force, E, _ = self.basis_vector(xva)
@@ -448,10 +458,11 @@ class Pos_gle_base(object):
         else:
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
 
-    def compute_projection_on_basis(self, var="obs", rank_tol=None, method="second_kind_trapz", k0=None):
+    def _compute_projection_on_basis(self, var="obs", method="second_kind_trapz", k0=None):
         """
         Computes the mean force from the trajectories.
         #TODO Verifier qu'on peut supprimer cette fonction
+        # On devrait pouvoir l'obtenir via compute_mean force and compute_corrs_w_noise une fois le kernel calculé
         """
         if self.verbose:
             print("Calculate projection of observable {}...".format(var))
@@ -500,6 +511,48 @@ class Pos_gle_base(object):
             raise Exception("Method for volterra inversion is not in  {second_kind_rect,second_kind_trapz}")
 
         return projection, time, bkobscorrw, orth_corr
+
+    def compute_ortho_obs(self, var="obs", method="second_kind_trapz", k0=None):
+        """
+        Computes projected correlation function.
+        """
+        if self.verbose:
+            print("Calculate projection of observable {}...".format(var))
+        if self.bkbkcorrw is None or self.dotbkbkcorrw is None:
+            raise Exception("Need correlation functions to compute projected correlation function.")
+
+        dim_obs = self.xva_list[0][var].data.shape[1]
+        time = self.xva_list[0]["time"].data[: self.trunc_ind]
+        dt = self.xva_list[0].attrs["dt"]
+        time = (time - time[0]).reshape(-1, 1)  # Set zero time
+
+        bkobscorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, dim_obs))
+
+        for weight, xva in zip(self.weights, self.xva_list):
+            E_force, E, dE = self.basis_vector(xva)
+            try:
+                bkobscorrw += weight * correlation_ND(dE, (xva[var].data), trunc=self.trunc_ind)
+            except MemoryError:  # If too big slow way
+                if self.verbose:
+                    print("Too many basis function, compute correlations one by one (slow)")
+                for n in range(E.shape[1]):
+                    for d in range(dim_obs):
+                        bkobscorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva[var].data[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
+
+        bkobscorrw /= self.weightsum
+        if self.rank_projection:
+            bkobscorrw = np.einsum("kj,ijd->ikd", self.P_range, bkobscorrw)
+
+        if k0 is None:  # Then we should compute initial value from time derivative at zero
+            k0 = np.matmul(np.linalg.inv(self.bkbkcorrw[0, :, :]), bkobscorrw[0, :, :])
+        if method == "second_kind_rect":
+            orth_corr = kernel_second_kind_rect(k0, self.bkbkcorrw[0, :, :], self.dotbkbkcorrw, bkobscorrw, dt)
+        elif method == "second_kind_trapz":
+            orth_corr = kernel_second_kind_trapz(k0, self.bkbkcorrw[0, :, :], self.dotbkbkcorrw, bkobscorrw, dt)
+        else:
+            raise Exception("Method for volterra inversion is not in  {second_kind_rect,second_kind_trapz}")
+
+        return time, bkobscorrw, orth_corr
 
     def force_eval(self, x):
         """

@@ -1,3 +1,8 @@
+[![Documentation Status](https://readthedocs.org/projects/volterrabasis/badge/?version=latest)](https://volterrabasis.readthedocs.io/en/latest/?badge=latest)
+
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+
 Python 3 tool suite for the computation of position dependent memory kernels from time series
 
 Please read (and cite) the following reference, where the details of the algorithm are explained.
@@ -10,7 +15,7 @@ Run
 
 to install, and see `examples/` to get started.
 
-To compile the documentation
+To compile the documentation (the code should be installed first)
 
 
     cd doc/

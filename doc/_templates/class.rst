@@ -4,10 +4,9 @@
 .. currentmodule:: {{ module }}
 
 .. autoclass:: {{ objname }}
-
-   {% block methods %}
-   .. automethod:: __init__
-   {% endblock %}
+   :members:
+   :inherited-members:
+   :special-members: __init__
 
 .. include:: {{module}}.{{objname}}.examples
 

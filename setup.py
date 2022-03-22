@@ -21,11 +21,28 @@ with open(ver_file) as f:
 VERSION = __version__
 
 
-INSTALL_REQUIRES = ["numpy>=1.15", "xarray>=0.20", "scipy>=1.7", "scikit-fem>=4.0"]
+with open("requirements.txt") as f:
+    INSTALL_REQUIRES = f.read().strip().split("\n")
+
+
 EXTRAS_REQUIRE = {"docs": ["sphinx", "sphinx-gallery", "sphinx_rtd_theme", "numpydoc", "matplotlib"]}
 ext_modules = [Extension(name="VolterraBasis.fkernel", sources=["VolterraBasis/fkernel.f90"], libraries=["lapack"])]
 
 
 CLASSIFIERS = ["Intended Audience :: Science/Research", "License :: OSI Approved", "Programming Language :: Python", "Topic :: Scientific/Engineering", "Operating System :: Microsoft :: Windows", "Operating System :: POSIX", "Operating System :: Unix", "Operating System :: MacOS"]
 
-setup(name=DISTNAME, version=VERSION, description=DESCRIPTION, author=AUTHOR, author_email=AUTHOR_EMAIL, ext_modules=ext_modules, install_requires=INSTALL_REQUIRES, extras_require=EXTRAS_REQUIRE, classifiers=CLASSIFIERS, packages=setuptools.find_packages(), package_data={"": ["*.f90"]})
+setup(
+    name=DISTNAME,
+    version=VERSION,
+    url=URL,
+    download_url=DOWNLOAD_URL,
+    description=DESCRIPTION,
+    author=AUTHOR,
+    author_email=AUTHOR_EMAIL,
+    ext_modules=ext_modules,
+    install_requires=INSTALL_REQUIRES,
+    extras_require=EXTRAS_REQUIRE,
+    classifiers=CLASSIFIERS,
+    packages=setuptools.find_packages(),
+    package_data={"": ["*.f90"]},
+)
