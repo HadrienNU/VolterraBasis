@@ -11,7 +11,7 @@ from .mesh import *
 __all__ = ["Pos_gle", "Pos_gle_with_friction", "Pos_gle_no_vel_basis", "Pos_gle_const_kernel", "Pos_gle_hybrid", "Pos_gle_overdamped", "correlation", "ElementFinder", "Pos_gle_fem"]
 
 
-def xframe(x, time, v=None, fix_time=False, round_time=1.0e-4, dt=-1):
+def xframe(x, time, v=None, a=None, fix_time=False, round_time=1.0e-4, dt=-1):
     """
     Creates a xarray dataset (['t', 'x']) from a trajectory.
 
@@ -28,6 +28,10 @@ def xframe(x, time, v=None, fix_time=False, round_time=1.0e-4, dt=-1):
     dt : float, default=-1
         When positive, this value is used for fixing the time instead of
         the first timestep.
+    v : numpy array, default=None
+        Velocity if computed externally
+    a : numpy array, default=None
+        Acceleration if computed externally
     """
     x = np.asarray(x)
     if x.ndim == 1:
@@ -46,6 +50,10 @@ def xframe(x, time, v=None, fix_time=False, round_time=1.0e-4, dt=-1):
         if v.ndim == 1:
             v = v.reshape(-1, 1)
         ds = xr.Dataset({"x": (["time", "dim_x"], x), "v": (["time", "dim_x"], v)}, coords={"time": time}, attrs={"dt": dt})
+    if a is not None:
+        if a.ndim == 1:
+            a = a.reshape(-1, 1)
+        ds = ds[["x", "v"]].assign({"a": a})
     return ds
 
 

@@ -116,7 +116,7 @@ class Pos_gle_base(object):
             for xva in self.xva_list:
                 for col in self.set_of_obs:
                     if col not in xva.data_vars:
-                        raise Exception("Please provide time,{} dataset, " "or an iterable collection (i.e. list) " "of time,{} dataset.").format(self.set_of_obs, self.set_of_obs)
+                        raise Exception("Please provide time,{} dataset, " "or an iterable collection (i.e. list) " "of time,{} dataset.".format(self.set_of_obs, self.set_of_obs))
                 if "time" not in xva.dims:
                     raise Exception("Time is not a coordinate. Please provide dataset with time, " "or an iterable collection (i.e. list) " "of dataset with time.")
                 if "dt" not in xva.attrs:
@@ -554,22 +554,35 @@ class Pos_gle_base(object):
 
         return time, bkobscorrw, orth_corr
 
-    def force_eval(self, x):
+    def force_eval(self, x, coeffs=None):
         """
-        Evaluate the force at given points x
+        Evaluate the force at given points x.
+        If coeffs is given, use provided coefficients instead of the force
         """
-        if self.force_coeff is None:
-            raise Exception("Mean force has not been computed.")
+        if coeffs is None:
+            if self.force_coeff is None:
+                raise Exception("Mean force has not been computed.")
+            coeffs = self.force_coeff
+        else:  # Check shape
+            if coeffs.shape != (self.N_basis_elt_force, self.dim_x):
+                raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_x)))
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="force")
-        return np.einsum("ik,kl->il", E, self.force_coeff)  # Return the force as array (nb of evalution point x dim_x)
+        return np.einsum("ik,kl->il", E, coeffs)  # Return the force as array (nb of evalution point x dim_x)
 
-    def kernel_eval(self, x):
+    def kernel_eval(self, x, coeffs_ker=None):
         """
-        Evaluate the kernel at given points x
+        Evaluate the kernel at given points x.
+        If coeffs_ker is given, use provided coefficients instead of the kernel
         """
         if self.kernel is None:
             raise Exception("Kernel has not been computed.")
+        if coeffs_ker is None:
+            coeffs_ker = self.kernel
+        else:  # Check shape
+            if coeffs_ker.shape != self.kernel.shape:
+                raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs_ker.shape, self.kernel.shape))
+
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")
         if self.rank_projection:
             E = np.einsum("kj,ijd->ikd", self.P_range, E)
-        return self.time, np.einsum("jkd,ikl->ijld", E, self.kernel)  # Return the kernel as array (time x nb of evalution point x dim_x x dim_x)
+        return self.time, np.einsum("jkd,ikl->ijld", E, coeffs_ker)  # Return the kernel as array (time x nb of evalution point x dim_x x dim_x)
