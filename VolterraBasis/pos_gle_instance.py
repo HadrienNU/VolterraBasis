@@ -47,6 +47,8 @@ class Pos_gle(Pos_gle_base):
         #     bk = np.concatenate((np.ones((bk.shape[0], 1)), bk), axis=1)
         if compute_for == "force":
             return bk
+        elif compute_for == "pmf":
+            return self.basis.antiderivative(xva["x"].data)
         dbk = self.basis.deriv(xva["x"].data)
         if compute_for == "kernel":  # For kernel evaluation
             return dbk
@@ -75,6 +77,8 @@ class Pos_gle_with_friction(Pos_gle_base):
         bk = self.basis.basis(xva["x"].data)
         if compute_for == "force_eval":
             return bk
+        elif compute_for == "pmf":
+            return self.basis.antiderivative(xva["x"].data)
         dbk = self.basis.deriv(xva["x"].data)
         if compute_for == "kernel":  # To have the term proportional to velocity
             return dbk
@@ -127,6 +131,8 @@ class Pos_gle_no_vel_basis(Pos_gle_base):
         E = self.basis.basis(xva["x"].data)
         if compute_for == "force":
             return E
+        elif compute_for == "pmf":
+            return self.basis.antiderivative(xva["x"].data)
         elif compute_for == "kernel":
             # Extend the basis for multidim value
             return E.reshape(-1, self.N_basis_elt_kernel, 1)
@@ -155,6 +161,8 @@ class Pos_gle_const_kernel(Pos_gle_base):
         #     bk = np.concatenate((np.ones((bk.shape[0], 1)), bk), axis=1)
         if compute_for == "force":
             return bk
+        elif compute_for == "pmf":
+            return self.basis.antiderivative(xva["x"].data)
         if compute_for == "kernel":  # For kernel evaluation
             grad = np.zeros((bk.shape[0], self.dim_x, self.dim_x))
             for i in range(self.dim_x):
@@ -184,6 +192,8 @@ class Pos_gle_hybrid(Pos_gle_base):
         bk = self.basis.basis(xva["x"].data)
         if compute_for == "force":
             return bk
+        elif compute_for == "pmf":
+            return self.basis.antiderivative(xva["x"].data)
         elif compute_for == "kernel":
             # Extend the basis for multidim value
             return bk.reshape(-1, self.N_basis_elt_kernel - 1, 1)
@@ -233,6 +243,8 @@ class Pos_gle_overdamped(Pos_gle_base):
         E = self.basis.basis(xva["x"].data)
         if compute_for == "force":
             return E
+        elif compute_for == "pmf":
+            return self.basis.antiderivative(xva["x"].data)
         elif compute_for == "kernel":
             # Extend the basis for multidim value
             return E.reshape(-1, self.N_basis_elt_kernel, 1)

@@ -4,11 +4,14 @@ from ._version import __version__
 
 from .pos_gle_instance import Pos_gle, Pos_gle_with_friction, Pos_gle_no_vel_basis, Pos_gle_const_kernel, Pos_gle_hybrid, Pos_gle_overdamped
 from .pos_gle_fem import ElementFinder, Pos_gle_fem
+from .prony_fit import prony_inspect_data, prony_fit_times_serie, prony_fit_kernel, prony_series_eval, prony_series_kernel_eval
 from .correlation import correlation_ND as correlation
 from . import basis
 from .mesh import *
 
-__all__ = ["Pos_gle", "Pos_gle_with_friction", "Pos_gle_no_vel_basis", "Pos_gle_const_kernel", "Pos_gle_hybrid", "Pos_gle_overdamped", "correlation", "ElementFinder", "Pos_gle_fem"]
+__all__ = ["Pos_gle", "Pos_gle_with_friction", "Pos_gle_no_vel_basis", "Pos_gle_const_kernel", "Pos_gle_hybrid", "Pos_gle_overdamped", "correlation"]
+__all__ += ["prony_fit_times_serie", "prony_series_eval", "prony_fit_kernel", "prony_series_kernel_eval", "prony_inspect_data"]
+__all__ += ["ElementFinder", "Pos_gle_fem"]
 
 
 def xframe(x, time, v=None, a=None, fix_time=False, round_time=1.0e-4, dt=-1):

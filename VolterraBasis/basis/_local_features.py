@@ -75,6 +75,16 @@ class BSplineFeatures(TransformerMixin):
     def hessian(self, X):
         return self.deriv(X, deriv_order=2)
 
+    def antiderivative(self, X, order=1):
+        nsamples, dim = X.shape
+        features = np.zeros((nsamples, self.n_output_features_))
+        for ispline, spline in enumerate(self.bsplines_):
+            istart = ispline * dim
+            iend = (ispline + 1) * dim
+            spline_int = scipy.interpolate.splantider(spline, order)
+            features[:, istart:iend] = scipy.interpolate.splev(X, spline_int)
+        return features
+
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt

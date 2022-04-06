@@ -41,6 +41,9 @@ class LinearFeatures(TransformerMixin):
     def hessian(self, X):
         return self.deriv(X, deriv_order=2)
 
+    def antiderivative(self, X, order=1):
+        return 0.5 * np.power(X, 2)
+
 
 class PolynomialFeatures(TransformerMixin):
     """
@@ -80,6 +83,15 @@ class PolynomialFeatures(TransformerMixin):
 
     def hessian(self, X):
         return self.deriv(X, deriv_order=2)
+
+    def antiderivative(self, X, order=1):
+        nsamples, dim = X.shape
+        features = np.zeros((nsamples, dim * self.degree))
+        for n in range(0, self.degree):
+            istart = n * dim
+            iend = (n + 1) * dim
+            features[:, istart:iend] = self.polynom.basis(n).integ(order)(X)
+        return features
 
 
 class FourierFeatures(TransformerMixin):
@@ -148,6 +160,24 @@ class FourierFeatures(TransformerMixin):
                     features[(Ellipsis, slice(istart + i, istart + i + 1)) + (i,) * 2] = -(((n + 1) / 2 * self.freq) ** 2) * np.sin((n + 1) / 2 * self.freq * X[:, slice(i, i + 1)]) / np.sqrt(np.pi)
         return features
 
+    def antiderivative(self, X, order=1):
+        if order > 1:
+            raise NotImplementedError
+        nsamples, dim = X.shape
+        features = np.zeros((nsamples, dim * self.order))
+        for n in range(0, self.order):
+            istart = n * dim
+            iend = (n + 1) * dim
+            if n == 0:
+                features[:, istart:iend] = X / np.sqrt(2 * np.pi)
+            elif n % 2 == 0:
+                # print(n / 2)
+                features[:, istart:iend] = np.sin(n / 2 * X * self.freq) / (np.sqrt(np.pi) * n / 2 * self.freq)
+            else:
+                # print((n + 1) / 2)
+                features[:, istart:iend] = -1 * np.cos((n + 1) / 2 * X * self.freq) / (np.sqrt(np.pi) * (n + 1) / 2 * self.freq)
+        return features
+
 
 class SplineFctFeatures(TransformerMixin):
     """
@@ -214,6 +244,9 @@ class FeaturesCombiner(TransformerMixin):
 
     def hessian(self, X):
         return self.deriv(X, deriv_order=2)
+
+    def antiderivative(self, X, order=1):
+        raise NotImplementedError("Don't try this")
 
 
 # class SplineFctWithLinFeatures(TransformerMixin):

@@ -68,8 +68,6 @@ class Pos_gle_base(object):
         self.corrsdxfile = "a-u_corrs.txt"
         self.dcorrsfile = "dE_corrs.txt"
         self.dcorrsdxfile = "dE_a-u_corrs.txt"
-        self.interpfefile = "interp-fe.txt"
-        self.histfile = "fe-hist.txt"
         self.kernelfile = "kernel.txt"
 
         self.bkbkcorrw = None
@@ -77,6 +75,8 @@ class Pos_gle_base(object):
         self.dotbkdxcorrw = None
         self.dotbkbkcorrw = None
         self.force_coeff = None
+
+        self.mass = None
 
         self.method = None
 
@@ -178,7 +178,9 @@ class Pos_gle_base(object):
         It take as argument a trajectory and should return the value of the basis function depending of the wanted case.
         There is three case that should be implemented.
 
-        "force" : for the evaluation and computation of the mean force.
+        "force": for the evaluation and computation of the mean force.
+
+        "pmf": for evaluation of the pmf using integration of the mean force
 
         "kernel": for the evaluation of the kernel.
 
@@ -568,6 +570,26 @@ class Pos_gle_base(object):
                 raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_x)))
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="force")
         return np.einsum("ik,kl->il", E, coeffs)  # Return the force as array (nb of evalution point x dim_x)
+
+    def pmf_eval(self, x, coeffs=None):
+        """
+        Compute free energy via integration of the mean force at points x.
+        This assume that the effective mass is independent of the position.
+        If coeffs is given, use provided coefficients instead of the force coefficients.
+        """
+        if self.dim_x > 1:
+            print("Warning: Computation of the free energy for dimensions higher than 1 is likely to be incorrect.")
+        if coeffs is None:
+            if self.force_coeff is None:
+                raise Exception("Mean force has not been computed.")
+            coeffs = self.force_coeff
+        else:  # Check shape
+            if coeffs.shape != (self.N_basis_elt_force, self.dim_x):
+                raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_x)))
+        if self.mass is None:
+            self.compute_effective_masse()
+        E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="pmf")
+        return -1 * np.einsum("ik,kl->il", E, np.matmul(coeffs, self.mass / self.kT))
 
     def kernel_eval(self, x, coeffs_ker=None):
         """

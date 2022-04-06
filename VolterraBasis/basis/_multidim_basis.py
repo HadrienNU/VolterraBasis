@@ -55,6 +55,9 @@ class TensorialBasis2D(TransformerMixin):
         print(hess_1.shape, hess_cross.shape, hess_2.shape)
         return np.concatenate((np.concatenate((hess_1, hess_cross), axis=-2), np.concatenate((hess_cross, hess_2), axis=-2)), axis=-1)  # Il faudrait concatenate le long de la diagonal
 
+    def antiderivative(self, X, order=1):
+        raise NotImplementedError("Don't try this")
+
 
 #
 # class TensorialBasis(TransformerMixin):
