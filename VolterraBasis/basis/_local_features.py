@@ -15,7 +15,7 @@ def _get_bspline_basis(knots, degree=3, periodic=False):
     ncoeffs = len(coeffs)
     bsplines = []
     for ispline in range(nknots):
-        coeffs = [1.0 if ispl == ispline else 0.0 for ispl in range(ncoeffs)]
+        coeffs = np.asarray([1.0 if ispl == ispline else 0.0 for ispl in range(ncoeffs)])
         bsplines.append((knots, coeffs, degree))
     return bsplines
 
@@ -81,7 +81,7 @@ class BSplineFeatures(TransformerMixin):
         for ispline, spline in enumerate(self.bsplines_):
             istart = ispline * dim
             iend = (ispline + 1) * dim
-            spline_int = scipy.interpolate.splantider(spline, order)
+            spline_int = scipy.interpolate.splantider(spline, n=order)
             features[:, istart:iend] = scipy.interpolate.splev(X, spline_int)
         return features
 
@@ -104,7 +104,7 @@ if __name__ == "__main__":
     x_range = np.linspace(-2, 2, 50).reshape(-1, 1)
     basis = basis.fit(x_range)
     # basis = LinearFeatures().fit(x_range)
-    y = basis.basis(x_range)
+    y = basis.antiderivative(x_range)
     plt.grid()
     for n in range(y.shape[1]):
         plt.plot(x_range[:, 0], y[:, n])

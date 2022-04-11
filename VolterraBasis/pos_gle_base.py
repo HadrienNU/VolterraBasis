@@ -589,7 +589,8 @@ class Pos_gle_base(object):
         if self.mass is None:
             self.compute_effective_masse()
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="pmf")
-        return -1 * np.einsum("ik,kl->il", E, np.matmul(coeffs, self.mass / self.kT))
+        pmf = -1 * np.einsum("ik,kl->il", E, np.matmul(coeffs, self.mass)) / self.kT
+        return pmf - np.min(pmf)
 
     def kernel_eval(self, x, coeffs_ker=None):
         """
