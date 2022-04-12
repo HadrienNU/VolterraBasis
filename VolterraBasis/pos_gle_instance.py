@@ -239,18 +239,41 @@ class Pos_gle_overdamped(Pos_gle_base):
             print("Warning: remove_const on basis function have been set to False.")
 
     def basis_vector(self, xva, compute_for="corrs"):
-        # We have to deal with the multidimensionnal case as well
         E = self.basis.basis(xva["x"].data)
         if compute_for == "force":
             return E
         elif compute_for == "pmf":
             return self.basis.antiderivative(xva["x"].data)
         elif compute_for == "kernel":
-            # Extend the basis for multidim value
-            return E.reshape(-1, self.N_basis_elt_kernel, 1)
+            return E.reshape(-1, self.N_basis_elt_kernel, self.dim_x)
         elif compute_for == "corrs":
             dbk = self.basis.deriv(xva["x"].data)
             dE = np.einsum("nld,nd->nl", dbk, xva["v"].data)
             return E, E, dE
+        else:
+            raise ValueError("Basis evaluation goal not specified")
+
+
+class Pos_gle_overdamped_const_kernel(Pos_gle_base):
+    """
+    Extraction of position dependent memory kernel for overdamped dynamics
+    using position-independent kernel.
+    """
+
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, L_obs="v"):
+        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc, L_obs)
+        self.N_basis_elt_force = self.N_basis_elt
+        self.N_basis_elt_kernel = self.dim_x
+
+    def basis_vector(self, xva, compute_for="corrs"):
+        E = self.basis.basis(xva["x"].data)
+        if compute_for == "force":
+            return E
+        elif compute_for == "pmf":
+            return self.basis.antiderivative(xva["x"].data)
+        elif compute_for == "kernel":
+            return np.ones((E.shape[0], 1, self.dim_x))
+        elif compute_for == "corrs":
+            return E, np.ones((E.shape[0], self.dim_x)), xva["v"].data
         else:
             raise ValueError("Basis evaluation goal not specified")
