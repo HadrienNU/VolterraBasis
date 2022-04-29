@@ -1,6 +1,7 @@
 import numpy as np
 
 from .pos_gle_base import Pos_gle_base, _convert_input_array_for_evaluation
+from .fkernel import solve_ide_rect, solve_ide_trapz
 
 
 class Pos_gle(Pos_gle_base):
@@ -152,7 +153,7 @@ class Pos_gle_const_kernel(Pos_gle_base):
     def __init__(self, *args, **kwargs):
         Pos_gle_base.__init__(self, *args, **kwargs)
         self.N_basis_elt_force = self.N_basis_elt
-        self.N_basis_elt_kernel = self.dim_x
+        self.N_basis_elt_kernel = self.dim_obs
 
     def basis_vector(self, xva, compute_for="corrs"):
         # We have to deal with the multidimensionnal case as well
@@ -164,8 +165,8 @@ class Pos_gle_const_kernel(Pos_gle_base):
         elif compute_for == "pmf":
             return self.basis.antiderivative(xva["x"].data)
         if compute_for == "kernel":  # For kernel evaluation
-            grad = np.zeros((bk.shape[0], self.dim_x, self.dim_x))
-            for i in range(self.dim_x):
+            grad = np.zeros((bk.shape[0], self.dim_obs, self.dim_obs))
+            for i in range(self.dim_obs):
                 grad[:, i, i] = 1.0
             return grad
         elif compute_for == "corrs":
@@ -222,7 +223,7 @@ class Pos_gle_hybrid(Pos_gle_base):
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")
         if self.rank_projection:
             E = np.einsum("kj,ijd->ikd", self.P_range, E)
-        return self.time, np.einsum("jkd,ikl->ijld", E, self.kernel[:, 1:, :])  # Return the kernel as array (time x nb of evalution point x dim_x x dim_x)
+        return self.time, np.einsum("jkd,ikl->ijld", E, self.kernel[:, 1:, :])  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x)
 
 
 class Pos_gle_overdamped(Pos_gle_base):
@@ -263,7 +264,7 @@ class Pos_gle_overdamped_const_kernel(Pos_gle_base):
     def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, L_obs="v"):
         Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc, L_obs)
         self.N_basis_elt_force = self.N_basis_elt
-        self.N_basis_elt_kernel = self.dim_x
+        self.N_basis_elt_kernel = self.dim_obs
 
     def basis_vector(self, xva, compute_for="corrs"):
         E = self.basis.basis(xva["x"].data)
@@ -272,8 +273,64 @@ class Pos_gle_overdamped_const_kernel(Pos_gle_base):
         elif compute_for == "pmf":
             return self.basis.antiderivative(xva["x"].data)
         elif compute_for == "kernel":
-            return np.ones((E.shape[0], 1, self.dim_x))
+            return np.ones((E.shape[0], self.N_basis_elt_kernel, self.dim_x))
         elif compute_for == "corrs":
-            return E, np.ones((E.shape[0], self.dim_x)), xva["v"].data
+            return E, np.ones((E.shape[0], self.dim_obs)), xva["v"].data
         else:
             raise ValueError("Basis evaluation goal not specified")
+
+
+class Pos_gle_linear_proj(Pos_gle_base):
+    """
+    Linear projection of the basis on the basis
+    """
+
+    def __init__(self, *args, **kwargs):
+        Pos_gle_base.__init__(self, *args, **kwargs)
+        self.N_basis_elt_force = self.N_basis_elt
+        self.N_basis_elt_kernel = self.N_basis_elt
+        if self.basis.const_removed:
+            self.basis.const_removed = False
+            print("Warning: remove_const on basis function have been set to False.")
+
+        self.dim_obs = self.N_basis_elt
+        self.L_obs = "dE"
+
+        for i in range(len(self.xva_list)):
+            E_force, E, dE = self.basis_vector(self.xva_list[i])
+            # Ici on échange dim_x avec dim_proj et dim_x devient Nsplines
+            # Ca permet de faire une projection linéaire sur la base
+            # xvaf.rename_dims({"dim_x": "dim"})
+            self.xva_list[i].update({"dE": (["time", "dim_dE"], dE)})
+
+    def basis_vector(self, xva, compute_for="corrs"):
+        E = self.basis.basis(xva["x"].data)
+        if compute_for == "force":
+            return E
+        elif compute_for == "pmf":
+            return self.basis.antiderivative(xva["x"].data)
+        elif compute_for == "kernel":
+            return E.reshape(-1, self.N_basis_elt_kernel, self.dim_x)
+        elif compute_for == "corrs":
+            dbk = self.basis.deriv(xva["x"].data)
+            dE = np.einsum("nld,nd->nl", dbk, xva["v"].data)
+            return E, E, dE
+        else:
+            raise ValueError("Basis evaluation goal not specified")
+
+    def solve_ide(self, lenTraj, method="trapz", E0=None):
+        """
+        Solve the integro-differential equation
+        """
+        if self.kernel is None:
+            raise Exception("Kernel has not been computed.")
+        if E0 is None:
+            E0 = self.bkbkcorrw[0, :, :]
+        else:
+            E0 = np.asarray(E0).reshape(self.dim_obs, self.dim_obs)
+        dt = self.xva_list[0].attrs["dt"]
+        if method == "rect":
+            E = solve_ide_rect(self.kernel, E0, self.force_coeff, lenTraj, dt)
+        elif method == "trapz":
+            E = solve_ide_trapz(self.kernel, E0, self.force_coeff, lenTraj, dt)
+        return np.arange(lenTraj) * dt, E

@@ -193,25 +193,25 @@ class SplineFctFeatures(TransformerMixin):
 
     def fit(self, X, y=None):
         nsamples, dim = X.shape
-        self.spl = scipy.interpolate.BSpline(self.t, self.c, self.k)
+        self.spl_ = scipy.interpolate.BSpline(self.t, self.c, self.k)
         self.n_output_features_ = dim
         return self
 
     def basis(self, X):
-        return self.spl(X)
+        return self.spl_(X)
 
     def deriv(self, X, deriv_order=1):
         nsamples, dim = X.shape
         grad = np.zeros((nsamples, dim) + (dim,) * deriv_order)
         for i in range(dim):
-            grad[(Ellipsis, slice(i, i + 1)) + (i,) * (deriv_order)] = self.spl.derivative(deriv_order)(X[:, slice(i, i + 1)])
+            grad[(Ellipsis, slice(i, i + 1)) + (i,) * (deriv_order)] = self.spl_.derivative(deriv_order)(X[:, slice(i, i + 1)])
         return grad
 
     def hessian(self, X):
         return self.deriv(X, deriv_order=2)
 
     def antiderivative(self, X, order=1):
-        return self.spl.antiderivative(order)(X)
+        return self.spl_.antiderivative(order)(X)
 
 
 class FeaturesCombiner(TransformerMixin):
@@ -262,25 +262,25 @@ class FeaturesCombiner(TransformerMixin):
 #
 #     def fit(self, X, y=None):
 #         nsamples, dim = X.shape
-#         self.spl = scipy.interpolate.BSpline(self.t, self.c, self.k)
+#         self.spl_ = scipy.interpolate.BSpline(self.t, self.c, self.k)
 #         self.n_output_features_ = 2 * dim
 #         return self
 #
 #     def basis(self, X):
-#         return np.concatenate((X, self.spl(X)), axis=1)
+#         return np.concatenate((X, self.spl_(X)), axis=1)
 #
 #     def deriv(self, X, deriv_order=1):
 #         if deriv_order == 1:
 #             lin_deriv = np.ones_like(X)
 #         else:
 #             lin_deriv = np.zeros_like(X)
-#         return np.concatenate((lin_deriv, self.spl.derivative(deriv_order)(X)), axis=1)
+#         return np.concatenate((lin_deriv, self.spl_.derivative(deriv_order)(X)), axis=1)
 #
 #     def hessian(self, X):
 #         return self.deriv(X, deriv_order=2)
 #
 #     def antiderivative(self, X, order=1):
-#         return self.spl.antiderivative(order)(X)
+#         return self.spl_.antiderivative(order)(X)
 
 
 if __name__ == "__main__":

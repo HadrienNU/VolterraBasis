@@ -57,6 +57,7 @@ class Pos_gle_base(object):
 
         self._do_check(xva_arg)  # Do some check on the trajectories
         self._check_basis(basis)  # Do check on basis
+
         # Create all internal variables
         self.saveall = saveall
         self.prefix = prefix
@@ -88,6 +89,7 @@ class Pos_gle_base(object):
             return
 
         self.dim_x = self.xva_list[0].dims["dim_x"]
+        self.dim_obs = self.xva_list[0][L_obs].shape[1]
 
         # processing input arguments
         self.weights = np.array([xva["time"].shape[0] for xva in self.xva_list], dtype=int)  # Should be the various lenght of trajectory
@@ -131,8 +133,11 @@ class Pos_gle_base(object):
         if not (callable(getattr(basis, "basis", None))) or not (callable(getattr(basis, "deriv", None))):
             raise Exception("Basis class do not define basis() or deriv() method")
         self.basis = basis
-        if callable(getattr(self.basis, "fit", None)):
-            self.basis = self.basis.fit(np.concatenate([xva["x"].data for xva in self.xva_list], axis=0))  # Fit basis
+        if not hasattr(self.basis, "n_output_features_"):
+            if callable(getattr(self.basis, "fit", None)):
+                self.basis = self.basis.fit(np.concatenate([xva["x"].data for xva in self.xva_list], axis=0))  # Fit basis
+            else:
+                raise Exception("Basis class do have fit() method or do not expose n_output_features_ attribute")
 
         self.N_basis_elt = self.basis.n_output_features_
 
@@ -232,7 +237,7 @@ class Pos_gle_base(object):
         return avg_gram
 
     def set_zero_force(self):
-        self.force_coeff = np.zeros((self.N_basis_elt_force, self.dim_x))
+        self.force_coeff = np.zeros((self.N_basis_elt_force, self.dim_obs))
 
     def compute_mean_force(self):
         """
@@ -240,7 +245,7 @@ class Pos_gle_base(object):
         """
         if self.verbose:
             print("Calculate mean force...")
-        avg_disp = np.zeros((self.N_basis_elt_force, self.dim_x))
+        avg_disp = np.zeros((self.N_basis_elt_force, self.dim_obs))
         avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
         for weight, xva in zip(self.weights, self.xva_list):
             E = self.basis_vector(xva, compute_for="force")
@@ -265,9 +270,9 @@ class Pos_gle_base(object):
             raise Exception("Mean force has not been computed.")
 
         self.bkbkcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.N_basis_elt_kernel))
-        self.bkdxcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.dim_x))
+        self.bkdxcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.dim_obs))
 
-        self.dotbkdxcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.dim_x))  # Needed for initial value anyway
+        self.dotbkdxcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.dim_obs))  # Needed for initial value anyway
         self.dotbkbkcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.N_basis_elt_kernel))
 
         for weight, xva in zip(self.weights, self.xva_list):
@@ -286,7 +291,7 @@ class Pos_gle_base(object):
                     if self.verbose:
                         print("Too many basis function, compute correlations one by one (slow)")
                     for n in range(E.shape[1]):
-                        for d in range(self.dim_x):
+                        for d in range(self.dim_obs):
                             self.bkdxcorrw[:, n, d] += weight * correlation_1D(E[:, n], xva[self.L_obs].data[:, d] - force[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
                             self.dotbkdxcorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva[self.L_obs].data[:, d] - force[:, d], trunc=self.trunc_ind)
                         for m in range(E.shape[1]):
@@ -294,7 +299,7 @@ class Pos_gle_base(object):
                             self.dotbkbkcorrw[:, n, m] += weight * correlation_1D(dE[:, n], E[:, m], trunc=self.trunc_ind)
             else:
                 for n in range(E.shape[1]):
-                    for d in range(self.dim_x):
+                    for d in range(self.dim_obs):
                         self.bkdxcorrw[:, n, d] += weight * correlation_1D(E[:, n], xva[self.L_obs].data[:, d] - force[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
                         self.dotbkdxcorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva[self.L_obs].data[:, d] - force[:, d], trunc=self.trunc_ind)
                     for m in range(E.shape[1]):
@@ -431,7 +436,7 @@ class Pos_gle_base(object):
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
         return time, xva[self.L_obs].data - force - memory, xva[self.L_obs].data, force, memory
 
-    def compute_corrs_w_noise(self, xva, left_op):
+    def compute_corrs_w_noise(self, xva, left_op=None):
         """
         Compute correlation between noise and left_op
 
@@ -453,108 +458,17 @@ class Pos_gle_base(object):
 
         noise = xva[self.L_obs].data - np.matmul(E_force, self.force_coeff)
 
+        if left_op is None:
+            left_op = noise
+        elif isinstance(left_op, str):
+            left_op = xva[left_op]
+
         if self.method in ["rect", "rectangular", "second_kind_rect"] or self.method is None:
             return self.time, corrs_rect(noise, self.kernel, E, left_op, dt)
         elif self.method == "trapz" or self.method == "second_kind_trapz":
             return self.time[:-1], corrs_trapz(noise, self.kernel, E, left_op, dt)
         else:
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
-
-    def _compute_projection_on_basis(self, var="obs", method="second_kind_trapz", k0=None):
-        """
-        Computes the mean force from the trajectories.
-        #TODO Verifier qu'on peut supprimer cette fonction
-        # On devrait pouvoir l'obtenir via compute_mean force and compute_corrs_w_noise une fois le kernel calculé
-        """
-        if self.verbose:
-            print("Calculate projection of observable {}...".format(var))
-        dim_obs = self.xva_list[0][var].data.shape[1]
-        avg_proj_f = np.zeros((self.N_basis_elt_force, dim_obs))
-        avg_gram_f = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
-        for weight, xva in zip(self.weights, self.xva_list):
-            E_force = self.basis_vector(xva, compute_for="force")
-            avg_proj_f += np.matmul(E_force.T, xva[var].data) / self.weightsum
-            avg_gram_f += np.matmul(E_force.T, E_force) / self.weightsum
-        projection = np.matmul(np.linalg.inv(avg_gram_f), avg_proj_f)
-
-        time = self.xva_list[0]["time"].data[: self.trunc_ind]
-        dt = self.xva_list[0].attrs["dt"]
-        time = (time - time[0]).reshape(-1, 1)  # Set zero time
-
-        bkobscorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, dim_obs))
-
-        for weight, xva in zip(self.weights, self.xva_list):
-            E_force, E, dE = self.basis_vector(xva)
-            mean_proj = np.matmul(E_force, projection)
-            try:
-                bkobscorrw += weight * correlation_ND(dE, (xva[var].data - mean_proj), trunc=self.trunc_ind)
-            except MemoryError:  # If too big slow way
-                if self.verbose:
-                    print("Too many basis function, compute correlations one by one (slow)")
-                for n in range(E.shape[1]):
-                    for d in range(dim_obs):
-                        bkobscorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva[var].data[:, d] - mean_proj[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
-
-        bkobscorrw /= self.weightsum
-        if self.rank_projection:
-            bkobscorrw = np.einsum("kj,ijd->ikd", self.P_range, bkobscorrw)
-
-        if k0 is None:  # Then we should compute initial value from time derivative at zero
-            k0 = np.matmul(np.linalg.inv(self.bkbkcorrw[0, :, :]), bkobscorrw[0, :, :])
-        if method == "second_kind_rect":
-            if self.dotbkbkcorrw is None:
-                raise Exception("Need correlation with derivative functions to compute the kernel using this method, please use other method.")
-            orth_corr = kernel_second_kind_rect(k0, self.bkbkcorrw[0, :, :], self.dotbkbkcorrw, bkobscorrw, dt)
-        elif method == "second_kind_trapz":
-            if self.dotbkbkcorrw is None:
-                raise Exception("Need correlation with derivative functions to compute the kernel using this method, please use other method.")
-            orth_corr = kernel_second_kind_trapz(k0, self.bkbkcorrw[0, :, :], self.dotbkbkcorrw, bkobscorrw, dt)
-        else:
-            raise Exception("Method for volterra inversion is not in  {second_kind_rect,second_kind_trapz}")
-
-        return projection, time, bkobscorrw, orth_corr
-
-    def compute_ortho_obs(self, var="obs", method="second_kind_trapz", k0=None):
-        """
-        Computes projected correlation function.
-        """
-        if self.verbose:
-            print("Calculate projection of observable {}...".format(var))
-        if self.bkbkcorrw is None or self.dotbkbkcorrw is None:
-            raise Exception("Need correlation functions to compute projected correlation function.")
-
-        dim_obs = self.xva_list[0][var].data.shape[1]
-        time = self.xva_list[0]["time"].data[: self.trunc_ind]
-        dt = self.xva_list[0].attrs["dt"]
-        time = (time - time[0]).reshape(-1, 1)  # Set zero time
-
-        bkobscorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, dim_obs))
-
-        for weight, xva in zip(self.weights, self.xva_list):
-            E_force, E, dE = self.basis_vector(xva)
-            try:
-                bkobscorrw += weight * correlation_ND(dE, (xva[var].data), trunc=self.trunc_ind)
-            except MemoryError:  # If too big slow way
-                if self.verbose:
-                    print("Too many basis function, compute correlations one by one (slow)")
-                for n in range(E.shape[1]):
-                    for d in range(dim_obs):
-                        bkobscorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva[var].data[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
-
-        bkobscorrw /= self.weightsum
-        if self.rank_projection:
-            bkobscorrw = np.einsum("kj,ijd->ikd", self.P_range, bkobscorrw)
-
-        if k0 is None:  # Then we should compute initial value from time derivative at zero
-            k0 = np.matmul(np.linalg.inv(self.bkbkcorrw[0, :, :]), bkobscorrw[0, :, :])
-        if method == "second_kind_rect":
-            orth_corr = kernel_second_kind_rect(k0, self.bkbkcorrw[0, :, :], self.dotbkbkcorrw, bkobscorrw, dt)
-        elif method == "second_kind_trapz":
-            orth_corr = kernel_second_kind_trapz(k0, self.bkbkcorrw[0, :, :], self.dotbkbkcorrw, bkobscorrw, dt)
-        else:
-            raise Exception("Method for volterra inversion is not in  {second_kind_rect,second_kind_trapz}")
-
-        return time, bkobscorrw, orth_corr
 
     def force_eval(self, x, coeffs=None):
         """
@@ -566,10 +480,10 @@ class Pos_gle_base(object):
                 raise Exception("Mean force has not been computed.")
             coeffs = self.force_coeff
         else:  # Check shape
-            if coeffs.shape != (self.N_basis_elt_force, self.dim_x):
-                raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_x)))
+            if coeffs.shape != (self.N_basis_elt_force, self.dim_obs):
+                raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="force")
-        return np.einsum("ik,kl->il", E, coeffs)  # Return the force as array (nb of evalution point x dim_x)
+        return np.einsum("ik,kl->il", E, coeffs)  # Return the force as array (nb of evalution point x dim_obs)
 
     def pmf_eval(self, x, coeffs=None):
         """
@@ -577,15 +491,15 @@ class Pos_gle_base(object):
         This assume that the effective mass is independent of the position.
         If coeffs is given, use provided coefficients instead of the force coefficients.
         """
-        if self.dim_x > 1:
+        if self.dim_obs > 1:
             print("Warning: Computation of the free energy for dimensions higher than 1 is likely to be incorrect.")
         if coeffs is None:
             if self.force_coeff is None:
                 raise Exception("Mean force has not been computed.")
             coeffs = self.force_coeff
         else:  # Check shape
-            if coeffs.shape != (self.N_basis_elt_force, self.dim_x):
-                raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_x)))
+            if coeffs.shape != (self.N_basis_elt_force, self.dim_obs):
+                raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
         if self.mass is None:
             self.compute_effective_masse()
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="pmf")
@@ -608,4 +522,4 @@ class Pos_gle_base(object):
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")
         if self.rank_projection:
             E = np.einsum("kj,ijd->ikd", self.P_range, E)
-        return self.time, np.einsum("jkd,ikl->ijld", E, coeffs_ker)  # Return the kernel as array (time x nb of evalution point x dim_x x dim_x)
+        return self.time, np.einsum("jkd,ikl->ijld", E, coeffs_ker)  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x)
