@@ -69,36 +69,42 @@ class Integrator_gle(object):
     The Class holding the BGLE integrator.
     """
 
-    def __init__(self, pos_gle, coeffs_noise_kernel, trunc_kernel=None, rng=np.random.normal, verbose=True):
+    def __init__(self, pos_gle, coeffs_noise_kernel=None, trunc_kernel=None, rng=np.random.normal, verbose=True):
         """
         On prend comme argument, une classe pos_gle qui contient l'estimation de la force et du kernel
         Des coeffs, coeffs_noise_kernel qui sont les coeffs qu'on veut prendre pour la covariance du bruit
         """
         self.verbose = verbose
-        self.pos_gle = pos_gle
+        self.basis = pos_gle.basis
 
         if trunc_kernel is None:
-            self.trunc_kernel = self.pos_gle.trunc_ind
+            self.trunc_kernel = pos_gle.trunc_ind
         else:
             self.trunc_kernel = trunc_kernel
 
-        self.dt = self.pos_gle.time[1, 0] - self.pos_gle.time[0, 0]
+        self.force_coeff = pos_gle.force_coeff
+        self.kernel = pos_gle.kernel
 
-        self.dim = self.pos_gle.dim_obs
+        self.rank_projection = pos_gle.rank_projection
+        self.P_range = pos_gle.P_range
+
+        self.dt = pos_gle.time[1, 0] - pos_gle.time[0, 0]
+
+        self.dim = pos_gle.dim_obs
 
         if self.verbose:
             print("Found dt =", self.dt)
 
-        if self.pos_gle.method in ["rect", "rectangular", "second_kind_rect"] or self.pos_gle.method is None:
-            self.memory_int = memory_rect
+        if pos_gle.method in ["rect", "rectangular", "second_kind_rect"] or pos_gle.method is None:
             self.weight_ker_int = 1.0 * self.dt
-        elif self.pos_gle.method in ["trapz", "second_kind_trapz"]:
-            self.memory_int = memory_trapz
+        elif pos_gle.method in ["trapz", "second_kind_trapz"]:
             self.weight_ker_int = 0.5 * self.dt
 
-        kernel_noise = np.einsum("k,ikl->il", coeffs_noise_kernel, self.pos_gle.kernel)
+        if coeffs_noise_kernel is None:
+            coeffs_noise_kernel = np.ones(pos_gle.N_basis_elt_kernel) @ pos_gle.bkbkcorrw[0, :, :]
+        kernel_noise = np.einsum("k,ikl->il", coeffs_noise_kernel, pos_gle.kernel)
 
-        self.noise_generator = ColoredNoiseGenerator(kernel_noise, self.pos_gle.time[:, 0])
+        self.noise_generator = ColoredNoiseGenerator(kernel_noise, pos_gle.time[:, 0])
 
     def initial_conditions(self, xva, n_mem=0):
         """
@@ -110,33 +116,35 @@ class Integrator_gle(object):
         start["time"] = np.arange(n_mem + 1) * self.dt
         return start
 
+    def basis_vector(self, x, v):
+        bk = self.basis.basis(x)
+        dbk = self.basis.deriv(x)
+        E = np.einsum("nld,nd->nl", dbk, v)
+        if self.rank_projection:
+            E = np.einsum("kj,ij->ik", self.P_range, E)
+        return bk, E
+
     def _mem_int_red(self, E):
-        return self.memory_int(self.pos_gle.kernel[1 : self.trunc_kernel], E, self.dt)[0, :]  # TODO A changer pour la bonne function
+        loc_trunc = min(E.shape[0], self.trunc_kernel - 2)
+        start_trunc = max(E.shape[0] - loc_trunc, 0)
+        return np.einsum("ik,ikl->l", E[start_trunc + 1 :][::-1, :], self.kernel[1:loc_trunc]) * self.dt + self.weight_ker_int * E[start_trunc] @ self.kernel[loc_trunc]
 
-    def _f_rk(self, xv, rmi, fr, alpha, last_E, last_rmi):
-        E_force, E, _ = self.pos_gle.basis_vector(xv)
-        if self.pos_gle.rank_projection:
-            E = np.einsum("kj,ij->ik", self.pos_gle.P_range, E)
-        # Calcul du pas suplémentaire du noyau mémoire, j'ai besoin de E aussi
-        mem = alpha * (last_rmi + self.weight_ker_int * last_E @ self.pos_gle.kernel[0, :]) + (1 - alpha) * (rmi + self.weight_ker_int * E @ self.pos_gle.kernel[0, :])
-        return xv.copy(data={"x": xv["x"], "v": xv["v"], "a": np.matmul(E_force, self.pos_gle.force_coeff) + fr - mem})
+    def _f_rk(self, x, v, rmi, fr, alpha, last_E, last_rmi):
+        E_force, E = self.basis_vector(x, v)
+        mem = alpha * (last_rmi + self.weight_ker_int * last_E @ self.kernel[0, :]) + (1 - alpha) * (rmi + self.weight_ker_int * E @ self.kernel[0, :])
+        return v, np.matmul(E_force, self.force_coeff) + fr - mem
 
-    def _rk_step(self, xv, rmi, fr, last_E, last_rmi):
-        """
-        On doit tout écrire avec des xarray
-        """
-        xv1 = self._f_rk(xv, rmi, fr, 0.0, last_E, last_rmi)
-        xv2 = self._f_rk(xv + xv1 * self.dt / 2, rmi, fr, 0.5, last_E, last_rmi)
-        xv3 = self._f_rk(xv + xv2 * self.dt / 2, rmi, fr, 0.5, last_E, last_rmi)
-        xv4 = self._f_rk(xv + xv3 * self.dt, rmi, fr, 1.0, last_E, last_rmi)
-        xv["a"] = (xv1["a"] + 2.0 * xv2["a"] + 2.0 * xv3["a"] + xv4["a"]) / 6.0
-        xv["v"] = xv["v"] + self.dt * xv["a"]
-        xv["x"] = xv["x"] + self.dt * (xv1["v"] + 2.0 * xv2["v"] + 2.0 * xv3["v"] + xv4["v"]) / 6.0
-        return xv
+    def _rk_step(self, x, v, rmi, fr, last_E, last_rmi):
+        k1x, k1v = self._f_rk(x, v, rmi, fr, 0.0, last_E, last_rmi)
+        k2x, k2v = self._f_rk(x + k1x * self.dt / 2, v + k1v * self.dt / 2, rmi, fr, 0.5, last_E, last_rmi)
+        k3x, k3v = self._f_rk(x + k2x * self.dt / 2, v + k2v * self.dt / 2, rmi, fr, 0.5, last_E, last_rmi)
+        k4x, k4v = self._f_rk(x + k3x * self.dt, v + k3v * self.dt, rmi, fr, 1.0, last_E, last_rmi)
+        a = (k1v + 2.0 * k2v + 2.0 * k3v + k4v) / 6.0
+        return x + self.dt * (k1x + 2.0 * k2x + 2.0 * k3x + k4x) / 6.0, v + self.dt * a, a
 
     def run(self, n_steps, x0=None, set_noise_to_zero=False):
         """
-        Il faut prendre en entrée un xarray, xv, qui contient les positions initiales.
+        Run a trajectory of length n_steps with initial conditions x0.
 
         """
         if set_noise_to_zero:
@@ -155,33 +163,41 @@ class Integrator_gle(object):
         else:
             n_0 = 0
 
-        E = np.zeros((n_steps, self.pos_gle.kernel.shape[1]))
+        E = np.zeros((n_steps, self.kernel.shape[1]))
         for ind in range(n_0):  # If needed to initialize
-            _, E_step, _ = self.pos_gle.basis_vector(trj.isel(time=[ind]))
-            if self.pos_gle.rank_projection:
-                E[ind, :] = np.einsum("kj,ij->ik", self.pos_gle.P_range, E_step)
-            else:
-                E[ind, :] = E_step
+            _, E_step = self.basis_vector(trj["x"].isel(time=[ind]), trj["v"].isel(time=[ind]))
+            E[ind, :] = E_step[0, :]
         rmi = np.zeros(self.dim)
+        x = trj["x"].isel(time=[n_0]).data
+        v = trj["v"].isel(time=[n_0]).data
         for ind in range(n_0, n_steps - 1):
             # print("----------------", ind, "----------")
-            _, E_step, _ = self.pos_gle.basis_vector(trj.isel(time=[ind]))
-            if self.pos_gle.rank_projection:
-                E[ind, :] = np.einsum("kj,ij->ik", self.pos_gle.P_range, E_step)
-            else:
-                E[ind, :] = E_step[0, :]
+            _, E_step = self.basis_vector(x, v)
+            E[ind, :] = E_step[0, :]
             last_rmi = rmi
             if ind > 1:
-                rmi = self._mem_int_red(E[:ind])  # self._mem_int_red(self.v_trj[:ind])  Faire ça ici qu'on ne doit prendre en compte le dernier term de la somme pour pouvoir le changer
+                rmi = self._mem_int_red(E[:ind])
                 last_E = E[ind - 1]
             else:
                 rmi = np.zeros(self.dim)
                 last_rmi = np.zeros(self.dim)
-                last_E = np.zeros(self.pos_gle.kernel.shape[1])
-
-            xv = self._rk_step(trj.isel(time=[ind]), rmi, noise[ind, :], last_E, last_rmi)
-            trj["x"][ind + 1] = xv["x"][0]  # A changer en utilisant loc
-            trj["v"][ind + 1] = xv["v"][0]
-            trj["a"][ind + 1] = xv["a"][0]
+                last_E = np.zeros(self.kernel.shape[1])
+            x, v, a = self._rk_step(x, v, rmi, noise[ind, :], last_E, last_rmi)
+            trj["x"][ind + 1] = x[0, :]  # A changer en utilisant loc
+            trj["v"][ind + 1] = v[0, :]
+            trj["a"][ind + 1] = a[0, :]
 
         return trj, noise[:n_steps]
+
+
+class Integrator_gle_const_kernel(Integrator_gle):
+    """
+    A derived class in which we the kernel is supposed independent of the position
+    """
+
+    def basis_vector(self, x, v):
+        bk = self.basis.basis(x)
+        E = v
+        if self.rank_projection:
+            E = np.einsum("kj,ij->ik", self.P_range, E)
+        return bk, E

@@ -4,7 +4,7 @@ from ._version import __version__
 
 from .pos_gle_instance import Pos_gle, Pos_gle_with_friction, Pos_gle_no_vel_basis, Pos_gle_const_kernel, Pos_gle_hybrid, Pos_gle_overdamped, Pos_gle_overdamped_const_kernel, Pos_gle_linear_proj
 from .pos_gle_fem import ElementFinder, Pos_gle_fem
-from .gle_integrate import Integrator_gle
+from .gle_integrate import Integrator_gle, Integrator_gle_const_kernel
 from .memory_fit import memory_fit, memory_fit_eval, memory_fit_kernel, memory_kernel_eval
 from .prony_fit import prony_inspect_data, prony_fit_times_serie, prony_fit_kernel, prony_series_eval, prony_series_kernel_eval
 from .correlation import correlation_ND as correlation
