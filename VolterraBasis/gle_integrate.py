@@ -129,37 +129,60 @@ class Integrator_gle(object):
     The Class holding the BGLE integrator.
     """
 
-    def __init__(self, pos_gle, coeffs_noise_kernel=None, trunc_kernel=None, rng=np.random.normal, verbose=True):
+    def __init__(self, pos_gle, coeffs_noise_kernel=None, trunc_kernel=None, rng=np.random.normal, verbose=True, **kwargs):
         """
         On prend comme argument, une classe pos_gle qui contient l'estimation de la force et du kernel
         Des coeffs, coeffs_noise_kernel qui sont les coeffs qu'on veut prendre pour la covariance du bruit
+        If pos_gle is None, basis,force_coeff, kernel and dt should be passed as argument
         """
         self.verbose = verbose
-        self.basis = pos_gle.basis
 
-        if trunc_kernel is None:
-            trunc_kernel = pos_gle.kernel.shape[0]
+        if pos_gle is not None:
+            self.basis = pos_gle.basis
 
-        self.force_coeff = pos_gle.force_coeff
-        self.kernel = pos_gle.kernel[:trunc_kernel]
+            if trunc_kernel is None:
+                trunc_kernel = pos_gle.kernel.shape[0]
 
-        self.trunc_kernel = self.kernel.shape[0]
+            self.force_coeff = pos_gle.force_coeff
+            self.kernel = pos_gle.kernel[:trunc_kernel]
 
-        self.rank_projection = pos_gle.rank_projection
-        self.P_range = pos_gle.P_range
+            self.rank_projection = pos_gle.rank_projection
+            self.P_range = pos_gle.P_range
 
-        self.dt = pos_gle.time[1, 0] - pos_gle.time[0, 0]
+            self.dt = pos_gle.time[1, 0] - pos_gle.time[0, 0]
 
-        self.N_basis_elt_kernel = pos_gle.N_basis_elt_kernel
-        self.dim = pos_gle.dim_obs
+            self.N_basis_elt_kernel = pos_gle.N_basis_elt_kernel
+            self.dim = pos_gle.dim_obs
+            if coeffs_noise_kernel is None:
+                kernel_gram = pos_gle.compute_kernel_gram()
+                coeffs_noise_kernel = np.linalg.inv(kernel_gram) @ pos_gle.bkbkcorrw[0, :, :]
+            kernel_noise = np.einsum("kl,ikd->ild", coeffs_noise_kernel, self.kernel)
+        else:
+            self.basis = kwargs["basis"]
+            self.force_coeff = kwargs["force_coeff"]
+            self.kernel = kwargs["kernel"]
+            self.dt = kwargs["dt"]
+            if self.kernel.ndim == 1:
+                self.dim = 1
+                self.N_basis_elt_kernel = 1
+            elif self.kernel.ndim == 2:
+                self.dim = self.kernel.shape[-1]
+                self.N_basis_elt_kernel = self.dim
+            else:
+                self.dim = self.kernel.shape[-1]
+                self.N_basis_elt_kernel = self.kernel.shape[1]
+
+            self.rank_projection = False
+            self.P_range = np.eye(self.dim)
+            if coeffs_noise_kernel is None:
+                kernel_noise = self.kernel
+            else:
+                kernel_noise = np.einsum("kl,ikd->ild", coeffs_noise_kernel, self.kernel)
 
         if self.verbose:
             print("Found dt =", self.dt)
 
-        if coeffs_noise_kernel is None:
-            kernel_gram = pos_gle.compute_kernel_gram()
-            coeffs_noise_kernel = np.linalg.inv(kernel_gram) @ pos_gle.bkbkcorrw[0, :, :]
-        kernel_noise = np.einsum("kl,ikd->ild", coeffs_noise_kernel, pos_gle.kernel)
+        self.trunc_kernel = self.kernel.shape[0]
 
         self.noise_generator = ColoredNoiseGenerator(kernel_noise, pos_gle.time[:, 0], rng=rng)
 
@@ -175,8 +198,6 @@ class Integrator_gle(object):
 
         self.force_coeff = pos_gle.force_coeff
         self.kernel = pos_gle.kernel[:trunc_kernel]
-
-        self.trunc_kernel = self.kernel.shape[0]
 
         self.rank_projection = pos_gle.rank_projection
         self.P_range = pos_gle.P_range
