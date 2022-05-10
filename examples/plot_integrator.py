@@ -76,7 +76,7 @@ ntrajs = trj.shape[1] - 1
 xf_md, fe_md, mean_a_md = compute_1d_fe(xva_list)
 
 
-mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), trunc=0.1, kT=1.0, saveall=False)
+mymem = vb.Pos_gle_const_kernel(xva_list, bf.BSplineFeatures(Nsplines), trunc=0.1, kT=1.0, saveall=False)
 # mymem = vb.Pos_gle(xva_list, bf.PolynomialFeatures(deg=3), trunc=10, kT=1.0, saveall=False)
 # mymem = vb.Pos_gle_const_kernel(xva_list, bf.LinearFeatures(), trunc=10, kT=1.0, saveall=False)
 print("Dimension of observable", mymem.dim_x)
@@ -88,7 +88,7 @@ mymem.compute_kernel(method="trapz")
 force_md = mymem.force_eval(xf_md)
 
 
-integrator = vb.Integrator_gle(mymem)  # np.ones(Nsplines - 1)
+integrator = vb.Integrator_gle_const_kernel(mymem)  # np.ones(Nsplines - 1)
 
 xva_new = []
 corrs_vv_cg = 0.0
