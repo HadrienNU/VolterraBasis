@@ -62,7 +62,7 @@ def xframe(x, time, v=None, a=None, fix_time=False, round_time=1.0e-4, dt=-1):
     if a is not None:
         if a.ndim == 1:
             a = a.reshape(-1, 1)
-        ds = ds[["x", "v"]].assign({"a": a})
+        ds = ds[["x", "v"]].assign({"a": (["time", "dim_x"], a)})  # {"a": a})
     return ds
 
 

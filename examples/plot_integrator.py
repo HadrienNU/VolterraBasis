@@ -3,10 +3,11 @@
 
 """
 ===========================
-Memory Kernel Estimation
+Memory Kernel Integration
 ===========================
 
-How to run memory kernel estimation
+How to run integration of the GLE once estimated.
+Note: Due to time limit on readthedocs, the trajectories here are too short for convergence and figure are quite noisy.
 """
 
 import numpy as np
@@ -67,7 +68,7 @@ for i in range(1, trj.shape[1]):
     xf = vb.xframe(trj[:, i], trj[:, 0] - trj[0, 0])
     xvaf = vb.compute_va(xf)
     xva_list.append(xvaf)
-    corrs_vv_md += vb.correlation(xvaf["v"]) / trj.shape[1]
+    corrs_vv_md += vb.correlation(xvaf["v"]) / (trj.shape[1] - 1)
 Nsplines = 10
 
 ntrajs = trj.shape[1] - 1
@@ -75,9 +76,9 @@ ntrajs = trj.shape[1] - 1
 xf_md, fe_md, mean_a_md = compute_1d_fe(xva_list)
 
 
-mymem = vb.Pos_gle_const_kernel(xva_list, bf.BSplineFeatures(Nsplines), trunc=1, kT=1.0, saveall=False)
-# mymem = vb.Pos_gle(xva_list, bf.PolynomialFeatures(deg=1), trunc=10, kT=1.0, saveall=False)
-# mymem = vb.Pos_gle(xva_list, bf.LinearFeatures(), trunc=10, kT=1.0, saveall=False)
+mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), trunc=0.1, kT=1.0, saveall=False)
+# mymem = vb.Pos_gle(xva_list, bf.PolynomialFeatures(deg=3), trunc=10, kT=1.0, saveall=False)
+# mymem = vb.Pos_gle_const_kernel(xva_list, bf.LinearFeatures(), trunc=10, kT=1.0, saveall=False)
 print("Dimension of observable", mymem.dim_x)
 mymem.compute_mean_force()
 
@@ -87,13 +88,14 @@ mymem.compute_kernel(method="trapz")
 force_md = mymem.force_eval(xf_md)
 
 
-integrator = vb.Integrator_gle_const_kernel(mymem)  # np.ones(Nsplines - 1)
+integrator = vb.Integrator_gle(mymem)  # np.ones(Nsplines - 1)
 
 xva_new = []
 corrs_vv_cg = 0.0
 for n in range(ntrajs):
     start = integrator.initial_conditions(xva_list[n])
-    xva, noise = integrator.run(40000, start)
+    xva = integrator.run(40000, start)
+    xva = vb.compute_a(xva)
     xva_new.append(xva)
     corrs_vv_cg += vb.correlation(xva["v"]) / ntrajs
 

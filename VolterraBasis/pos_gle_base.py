@@ -24,7 +24,7 @@ class Pos_gle_base(object):
     holding all data and the extracted memory kernels.
     """
 
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, L_obs="a", **kwargs):
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, trunc=1.0, L_obs="a", **kwargs):
         """
         Create an instance of the Pos_gle class.
 
@@ -62,7 +62,6 @@ class Pos_gle_base(object):
         self.saveall = saveall
         self.prefix = prefix
         self.verbose = verbose
-        self.kT = kT
 
         # filenames
         self.corrsfile = "corrs.txt"
@@ -78,6 +77,7 @@ class Pos_gle_base(object):
         self.force_coeff = None
 
         self.mass = None
+        self.kernel_gram = None
 
         self.method = None
 
@@ -193,40 +193,40 @@ class Pos_gle_base(object):
         """
         raise NotImplementedError
 
-    def compute_gram(self):
+    def compute_gram(self, kT=1.0):
         if self.verbose:
             print("Calculate gram...")
-            print("Use kT:", self.kT)
+            print("Use kT:", kT)
         avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
         for weight, xva in zip(self.weights, self.xva_list):
             E = self.basis_vector(xva, compute_for="force")
             avg_gram += np.matmul(E.T, E) / self.weightsum
-        self.invgram = self.kT * np.linalg.pinv(avg_gram)
+        self.invgram = kT * np.linalg.pinv(avg_gram)
 
         if self.verbose:
             print("Found inverse gram:", self.invgram)
-        return self.kT * avg_gram
+        return kT * avg_gram
 
-    def compute_effective_masse(self):
+    def compute_effective_mass(self, kT=1.0):
         """
-        Return effective mass computed from equipartition with the velocity.
+        Return average effective mass computed from equipartition with the velocity.
         """
         if self.verbose:
             print("Calculate effective mass...")
-            print("Use kT:", self.kT)
+            print("Use kT:", kT)
         v2sum = 0.0
         for i, xva in enumerate(self.xva_list):
             v2sum += np.einsum("ik,ij->kj", xva["v"], xva["v"])
         v2 = v2sum / self.weightsum
-        self.mass = self.kT * np.linalg.inv(v2)
+        mass = kT * np.linalg.inv(v2)
 
         if self.verbose:
-            print("Found effective mass:", self.mass)
-        return self.mass
+            print("Found effective mass:", mass)
+        return mass
 
-    def compute_kernel_gram(self):
+    def compute_pos_effective_mass(self, kT=1.0):
         """
-        Return gram matrix of the kernel part of the basis.
+        Return position-dependent effective mass
         """
         if self.verbose:
             print("Calculate kernel gram...")
@@ -234,7 +234,24 @@ class Pos_gle_base(object):
         for weight, xva in zip(self.weights, self.xva_list):
             _, E, _ = self.basis_vector(xva, compute_for="corrs")
             avg_gram += np.matmul(E.T, E) / self.weightsum
-        return avg_gram
+        self.mass = kT * np.linalg.inv(avg_gram)
+        return self.mass
+
+    def compute_kernel_gram(self):
+        """
+        Return gram matrix of the kernel part of the basis.
+        """
+        if self.kernel_gram is None:
+            if self.verbose:
+                print("Calculate kernel gram...")
+            avg_gram = np.zeros((self.N_basis_elt_kernel, self.N_basis_elt_kernel))
+            for weight, xva in zip(self.weights, self.xva_list):
+                E = self.basis_vector(xva, compute_for="kernel")
+                if self.rank_projection:
+                    E = np.einsum("kj,ijd->ikd", self.P_range, E)
+                avg_gram += np.einsum("ikd,ild->kl", E, E) / self.weightsum  # np.matmul(E.T, E)
+            self.kernel_gram = avg_gram
+        return self.kernel_gram
 
     def set_zero_force(self):
         self.force_coeff = np.zeros((self.N_basis_elt_force, self.dim_obs))
@@ -485,7 +502,7 @@ class Pos_gle_base(object):
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="force")
         return np.einsum("ik,kl->il", E, coeffs)  # Return the force as array (nb of evalution point x dim_obs)
 
-    def pmf_eval(self, x, coeffs=None):
+    def pmf_eval(self, x, coeffs=None, kT=1.0):
         """
         Compute free energy via integration of the mean force at points x.
         This assume that the effective mass is independent of the position.
@@ -501,9 +518,9 @@ class Pos_gle_base(object):
             if coeffs.shape != (self.N_basis_elt_force, self.dim_obs):
                 raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
         if self.mass is None:
-            self.compute_effective_masse()
+            self.compute_pos_effective_mass(kT=kT)
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="pmf")
-        pmf = -1 * np.einsum("ik,kl->il", E, np.matmul(coeffs, self.mass)) / self.kT
+        pmf = -1 * np.einsum("ik,kl->il", E, np.matmul(coeffs, self.mass)) / kT
         return pmf - np.min(pmf)
 
     def kernel_eval(self, x, coeffs_ker=None):

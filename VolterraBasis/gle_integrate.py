@@ -1,8 +1,6 @@
 import numpy as np
 import xarray as xr
 
-from .fkernel import memory_rect, memory_trapz
-
 
 def ft(f, t):
     w = 2.0 * np.pi * np.fft.fftfreq(len(f)) / (t[1] - t[0])
@@ -21,53 +19,7 @@ def ift(f, w, t):
 class ColoredNoiseGenerator:
     """
     A class for the generation of colored noise.
-    Taken from https://github.com/jandaldrop/bgle
-    Implement correlated noise generator of DOI: 10.1103/PhysRevE.91.032125
-    """
-
-    def __init__(self, kernel, t, rng=np.random.normal):
-        """
-        Create an instance of the ColoredNoiseGenerator class.
-
-        Parameters
-        ----------
-        kernel : numpy.array
-            The correlation function of the noise.
-        t : numpy.array
-            The time/x values of kernel.
-        add_zeros : int, default=0
-            Add add_zeros number of zeros to the kernel function for numeric Fourier transformation.
-        """
-
-        self.t = t.ravel()
-        self.dt = self.t[1] - self.t[0]
-
-        self.dim = kernel.shape[-1]
-        self.kernel = kernel  # np.concatenate([kernel, np.zeros(add_zeros)]) # Calculer add_zeros directement à partir de la puissance de 2 la plus proche
-
-        self.rng = rng
-
-        t_sym = np.concatenate((-self.t[:0:-1], self.t))
-        self.sqk = np.empty((t_sym.shape[0], self.dim))
-
-        for d in range(self.dim):
-            kernel_sym = np.concatenate((self.kernel[:0:-1, d], self.kernel[:, d]))
-            kernel_ft, w = ft(kernel_sym, t_sym)
-            sqk_ft = np.sqrt(kernel_ft)
-            self.sqk[:, d] = ift(sqk_ft, w, t_sym).real
-
-    def generate(self, size):
-        colored_noise = np.empty((max(size, self.sqk.shape[0]), self.dim))
-        for d in range(self.dim):
-            white_noise = self.rng(size=size)
-            colored_noise[:, d] = np.convolve(white_noise, self.sqk[:, d], mode="same")
-        return colored_noise[:size] * np.sqrt(self.dt)
-
-
-class PosColoredNoiseGenerator:
-    """
-    A class for the generation of colored noise.
-    Taken from https://github.com/jandaldrop/bgle
+    Adapted from https://github.com/jandaldrop/bgle
     Implement correlated noise generator of DOI: 10.1103/PhysRevE.91.032125
     """
 
@@ -127,39 +79,39 @@ class Integrator_gle(object):
         self.basis = pos_gle.basis
 
         if trunc_kernel is None:
-            self.trunc_kernel = pos_gle.trunc_ind
-        else:
-            self.trunc_kernel = trunc_kernel
+            trunc_kernel = pos_gle.kernel.shape[0]
 
         self.force_coeff = pos_gle.force_coeff
-        self.kernel = pos_gle.kernel
+        self.kernel = pos_gle.kernel[:trunc_kernel]
+
+        self.trunc_kernel = self.kernel.shape[0]
 
         self.rank_projection = pos_gle.rank_projection
         self.P_range = pos_gle.P_range
 
         self.dt = pos_gle.time[1, 0] - pos_gle.time[0, 0]
 
+        self.N_basis_elt_kernel = pos_gle.N_basis_elt_kernel
         self.dim = pos_gle.dim_obs
 
         if self.verbose:
             print("Found dt =", self.dt)
 
-        if pos_gle.method in ["rect", "rectangular", "second_kind_rect"] or pos_gle.method is None:
-            self.weight_ker_int = 1.0 * self.dt
-        elif pos_gle.method in ["trapz", "second_kind_trapz"]:
-            self.weight_ker_int = 0.5 * self.dt
-
         if coeffs_noise_kernel is None:
-            coeffs_noise_kernel = np.ones(pos_gle.N_basis_elt_kernel) @ pos_gle.bkbkcorrw[0, :, :]
-        kernel_noise = np.einsum("k,ikl->il", coeffs_noise_kernel, pos_gle.kernel)
+            kernel_gram = pos_gle.compute_kernel_gram()
+            coeffs_noise_kernel = np.linalg.inv(kernel_gram) @ pos_gle.bkbkcorrw[0, :, :]
+        kernel_noise = np.einsum("kl,ikd->ild", coeffs_noise_kernel, pos_gle.kernel)
 
-        self.noise_generator = ColoredNoiseGenerator(kernel_noise, pos_gle.time[:, 0])
+        self.noise_generator = ColoredNoiseGenerator(kernel_noise, pos_gle.time[:, 0], rng=rng)
 
-    def initial_conditions(self, xva, n_mem=0):
+    def initial_conditions(self, xva_arg, n_mem=0):
         """
-        Draw random initial start point from another trajectory.
-        TODO: give set of trajectory
+        Draw random initial start point from another trajectory or a set of trajectories.
         """
+        if isinstance(xva_arg, xr.Dataset):
+            xva = xva_arg
+        else:
+            xva = xva_arg[np.random.randint(len(xva_arg))]
         point = np.random.randint(n_mem, xva["time"].shape[0])
         start = xva.isel(time=slice(point - n_mem, point + 1))
         start["time"] = np.arange(n_mem + 1) * self.dt
@@ -171,72 +123,68 @@ class Integrator_gle(object):
         E = np.einsum("nld,nd->nl", dbk, v)
         if self.rank_projection:
             E = np.einsum("kj,ij->ik", self.P_range, E)
-        return bk, E
+        return bk, E, dbk
 
     def _mem_int_red(self, E):
-        loc_trunc = min(E.shape[0], self.trunc_kernel - 2)
+        loc_trunc = min(E.shape[0], self.trunc_kernel - 1)
         start_trunc = max(E.shape[0] - loc_trunc, 0)
-        return np.einsum("ik,ikl->l", E[start_trunc + 1 :][::-1, :], self.kernel[1:loc_trunc]) * self.dt + self.weight_ker_int * E[start_trunc] @ self.kernel[loc_trunc]
+        return np.einsum("ik,ikl->l", E[start_trunc + 1 :][::-1, :], self.kernel[1:loc_trunc]) * self.dt + 0.5 * self.dt * E[start_trunc] @ self.kernel[loc_trunc]
 
     def _f_rk(self, x, v, rmi, fr, alpha, last_E, last_rmi):
-        E_force, E = self.basis_vector(x, v)
-        mem = alpha * (last_rmi + self.weight_ker_int * last_E @ self.kernel[0, :]) + (1 - alpha) * (rmi + self.weight_ker_int * E @ self.kernel[0, :])
-        return v, np.matmul(E_force, self.force_coeff) + fr - mem
+        E_force, E, E_noise = self.basis_vector(x, v)
+        mem = alpha * (last_rmi + 0.5 * self.dt * last_E @ self.kernel[0, :]) + (1.0 - alpha) * (rmi + 0.5 * self.dt * E @ self.kernel[0, :])
+        return v, np.matmul(E_force, self.force_coeff) + E_noise[0, :].T @ fr - mem
 
     def _rk_step(self, x, v, rmi, fr, last_E, last_rmi):
-        k1x, k1v = self._f_rk(x, v, rmi, fr, 0.0, last_E, last_rmi)
+        k1x, k1v = self._f_rk(x, v, rmi, fr, 1.0, last_E, last_rmi)
         k2x, k2v = self._f_rk(x + k1x * self.dt / 2, v + k1v * self.dt / 2, rmi, fr, 0.5, last_E, last_rmi)
         k3x, k3v = self._f_rk(x + k2x * self.dt / 2, v + k2v * self.dt / 2, rmi, fr, 0.5, last_E, last_rmi)
-        k4x, k4v = self._f_rk(x + k3x * self.dt, v + k3v * self.dt, rmi, fr, 1.0, last_E, last_rmi)
+        k4x, k4v = self._f_rk(x + k3x * self.dt, v + k3v * self.dt, rmi, fr, 0.0, last_E, last_rmi)
         a = (k1v + 2.0 * k2v + 2.0 * k3v + k4v) / 6.0
         return x + self.dt * (k1x + 2.0 * k2x + 2.0 * k3x + k4x) / 6.0, v + self.dt * a, a
 
     def run(self, n_steps, x0=None, set_noise_to_zero=False):
         """
         Run a trajectory of length n_steps with initial conditions x0.
-
         """
         if set_noise_to_zero:
             noise = np.zeros((n_steps, self.dim))
         else:
             noise = self.noise_generator.generate(n_steps)
 
-        trj = xr.Dataset({"x": (["time", "dim_x"], np.zeros((n_steps, self.dim))), "v": (["time", "dim_x"], np.zeros((n_steps, self.dim))), "a": (["time", "dim_x"], np.zeros((n_steps, self.dim)))}, coords={"time": np.arange(n_steps) * self.dt}, attrs={"dt": self.dt})
-        # Pour les conditions initial, l'idée c'est de remplacer les n_0 premier pas par le contenu de trj0
+        trj = xr.Dataset({"x": (["time", "dim_x"], np.zeros((n_steps, self.dim))), "v": (["time", "dim_x"], np.zeros((n_steps, self.dim)))}, coords={"time": np.arange(n_steps) * self.dt}, attrs={"dt": self.dt})
+
         if x0 is not None:
             n_0 = x0["time"].shape[0]
             # Slicing the DataSet and setting its n_0 first value with
             trj["x"][:n_0] = x0["x"]
             trj["v"][:n_0] = x0["v"]
-            n_0 -= 1
         else:
-            n_0 = 0
+            n_0 = 1
+        trj["time"] = (n_0 - 1 + np.arange(n_steps)) * self.dt
 
         E = np.zeros((n_steps, self.kernel.shape[1]))
-        for ind in range(n_0):  # If needed to initialize
-            _, E_step = self.basis_vector(trj["x"].isel(time=[ind]), trj["v"].isel(time=[ind]))
-            E[ind, :] = E_step[0, :]
         rmi = np.zeros(self.dim)
-        x = trj["x"].isel(time=[n_0]).data
-        v = trj["v"].isel(time=[n_0]).data
-        for ind in range(n_0, n_steps - 1):
-            # print("----------------", ind, "----------")
-            _, E_step = self.basis_vector(x, v)
+        for ind in range(n_0):  # If needed to initialize
+            _, E_step, _ = self.basis_vector(trj["x"].isel(time=[ind]), trj["v"].isel(time=[ind]))
             E[ind, :] = E_step[0, :]
+        if n_0 > 1:
+            rmi = self._mem_int_red(E[: n_0 - 1])
+        x = trj["x"].isel(time=[n_0 - 1]).data
+        v = trj["v"].isel(time=[n_0 - 1]).data
+        for ind in range(n_0, n_steps):
+            # print("----------------", ind, "----------")
             last_rmi = rmi
-            if ind > 1:
-                rmi = self._mem_int_red(E[:ind])
-                last_E = E[ind - 1]
-            else:
-                rmi = np.zeros(self.dim)
-                last_rmi = np.zeros(self.dim)
-                last_E = np.zeros(self.kernel.shape[1])
+            last_E = E[ind - 1]
+            rmi = self._mem_int_red(E[:ind])
             x, v, a = self._rk_step(x, v, rmi, noise[ind, :], last_E, last_rmi)
-            trj["x"][ind + 1] = x[0, :]  # A changer en utilisant loc
-            trj["v"][ind + 1] = v[0, :]
-            trj["a"][ind + 1] = a[0, :]
+            trj["x"][ind] = x[0, :]  # A changer en utilisant loc
+            trj["v"][ind] = v[0, :]
 
-        return trj, noise[:n_steps]
+            _, E_step, _ = self.basis_vector(x, v)
+            E[ind, :] = E_step[0, :]
+
+        return trj
 
 
 class Integrator_gle_const_kernel(Integrator_gle):
@@ -249,4 +197,85 @@ class Integrator_gle_const_kernel(Integrator_gle):
         E = v
         if self.rank_projection:
             E = np.einsum("kj,ij->ik", self.P_range, E)
-        return bk, E
+        return bk, E, np.ones_like(v)
+
+
+class BGLEIntegrator(Integrator_gle_const_kernel):
+    """
+    The Class holding the BGLE integrator.
+    """
+
+    def dU(self, x):
+        E_force, _, _ = self.basis_vector(x.reshape(1, -1), np.zeros((1, 1)))
+        return -1 * np.matmul(E_force, self.force_coeff)
+
+    def _mem_int_red(self, v):
+        if len(v) < len(self.kernel):
+            v = np.concatenate([np.zeros(len(self.kernel) - len(v) + 1), v])
+        integrand = self.kernel[1:] * v[: len(v) - len(self.kernel[1:]) - 1 : -1]
+        return (0.5 * integrand[-1] + np.sum(integrand[:-1])) * self.dt
+
+    def f_rk(self, x, v, rmi, fr, next_w, last_w, last_v, last_rmi):
+        nv = v
+        na = -next_w * rmi - last_w * last_rmi - 0.5 * next_w * self.kernel[0] * v * self.dt - 0.5 * last_w * self.kernel[0] * last_v * self.dt - self.dU(x) + fr
+        return nv, na
+
+    def rk_step(self, x, v, rmi, fr, last_v, last_rmi):
+        k1x, k1v = self.f_rk(x, v, rmi, fr, 0.0, 1.0, last_v, last_rmi)
+        k2x, k2v = self.f_rk(x + k1x * self.dt / 2, v + k1v * self.dt / 2, rmi, fr, 0.5, 0.5, last_v, last_rmi)
+        k3x, k3v = self.f_rk(x + k2x * self.dt / 2, v + k2v * self.dt / 2, rmi, fr, 0.5, 0.5, last_v, last_rmi)
+        k4x, k4v = self.f_rk(x + k3x * self.dt, v + k3v * self.dt, rmi, fr, 1.0, 0.0, last_v, last_rmi)
+        return x + self.dt * (k1x + 2.0 * k2x + 2.0 * k3x + k4x) / 6.0, v + self.dt * (k1v + 2.0 * k2v + 2.0 * k3v + k4v) / 6.0, (k1v + 2.0 * k2v + 2.0 * k3v + k4v) / 6.0
+
+    def integrate(self, n_steps, x0=0.0, v0=0.0, set_noise_to_zero=False, _custom_noise_array=None, _predef_x=None, _predef_v=None, _n_0=0):
+
+        self.kernel = self.kernel.ravel()
+        if set_noise_to_zero:
+            noise = np.zeros(n_steps)
+        else:
+            if _custom_noise_array is None:
+                noise = self.noise_generator.generate(n_steps)
+            else:
+                assert len(_custom_noise_array) == n_steps
+                noise = _custom_noise_array
+        x, v = x0, v0
+
+        if _predef_v is None:
+            self.v_trj = np.zeros(n_steps)
+        else:
+            assert len(_predef_v) == n_steps
+            assert _predef_v[_n_0 - 1] == v
+            self.v_trj = _predef_v
+
+        if _predef_x is None:
+            self.x_trj = np.zeros(n_steps)
+        else:
+            assert len(_predef_x) == n_steps
+            assert _predef_x[_n_0 - 1] == x
+            self.x_trj = _predef_x
+
+        self.t_trj = np.arange(0.0, n_steps * self.dt, self.dt)
+        self.v_trj[_n_0] = v
+        self.x_trj[_n_0] = x
+
+        self.mem_trj = np.zeros(n_steps)
+        self.a_trj = np.zeros(n_steps)
+
+        rmi = 0.0
+        for ind in range(_n_0 + 1, n_steps):
+            # print("----------------", ind, "----------")
+            last_rmi = rmi
+            if ind > 1:
+                rmi = self._mem_int_red(self.v_trj[:ind])
+                last_v = self.v_trj[ind - 1]
+            else:
+                rmi = 0.0
+                last_rmi = 0.0
+                last_v = 0.0
+            x, v, a = self.rk_step(x, v, rmi, noise[ind], last_v, last_rmi)
+            self.v_trj[ind] = v
+            self.x_trj[ind] = x
+            self.a_trj[ind] = a
+            self.mem_trj[ind] = rmi
+
+        return self.x_trj, self.v_trj, self.t_trj, noise[:n_steps], self.mem_trj, self.a_trj
