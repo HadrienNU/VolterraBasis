@@ -64,6 +64,55 @@ class ColoredNoiseGenerator:
         return colored_noise[:size] * np.sqrt(self.dt)
 
 
+class PosColoredNoiseGenerator:
+    """
+    A class for the generation of colored noise.
+    Taken from https://github.com/jandaldrop/bgle
+    Implement correlated noise generator of DOI: 10.1103/PhysRevE.91.032125
+    """
+
+    def __init__(self, kernel, t, rng=np.random.normal):
+        """
+        Create an instance of the ColoredNoiseGenerator class.
+
+        Parameters
+        ----------
+        kernel : numpy.array
+            The correlation function of the noise.
+        t : numpy.array
+            The time/x values of kernel.
+        add_zeros : int, default=0
+            Add add_zeros number of zeros to the kernel function for numeric Fourier transformation.
+        """
+
+        self.t = t.ravel()
+        self.dt = self.t[1] - self.t[0]
+
+        self.N_basis_elt_kernel = kernel.shape[1]
+        self.dim = kernel.shape[-1]
+        self.kernel = kernel  # np.concatenate([kernel, np.zeros(add_zeros)]) # Calculer add_zeros directement à partir de la puissance de 2 la plus proche
+
+        self.rng = rng
+
+        t_sym = np.concatenate((-self.t[:0:-1], self.t))
+        self.sqk = np.empty((t_sym.shape[0], self.N_basis_elt_kernel, self.dim))
+
+        for k in range(self.N_basis_elt_kernel):
+            for d in range(self.dim):
+                kernel_sym = np.concatenate((self.kernel[:0:-1, k, d], self.kernel[:, k, d]))
+                kernel_ft, w = ft(kernel_sym, t_sym)
+                sqk_ft = np.sqrt(kernel_ft)
+                self.sqk[:, k, d] = ift(sqk_ft, w, t_sym).real
+
+    def generate(self, size):
+        colored_noise = np.empty((max(size, self.sqk.shape[0]), self.N_basis_elt_kernel, self.dim))
+        for k in range(self.N_basis_elt_kernel):
+            for d in range(self.dim):
+                white_noise = self.rng(size=size)
+                colored_noise[:, k, d] = np.convolve(white_noise, self.sqk[:, k, d], mode="same")
+        return colored_noise[:size] * np.sqrt(self.dt)
+
+
 class Integrator_gle(object):
     """
     The Class holding the BGLE integrator.
