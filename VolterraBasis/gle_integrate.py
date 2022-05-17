@@ -234,9 +234,12 @@ class Integrator_gle(object):
         return np.einsum("ik,ikl->l", E[start_trunc + 1 :][::-1, :], self.kernel[1:loc_trunc]) * self.dt + 0.5 * self.dt * E[start_trunc] @ self.kernel[loc_trunc]
 
     def _f_rk(self, x, v, rmi, fr, alpha, last_E, last_rmi):
-        E_force, E, E_noise = self.basis_vector(x, v)
+        """
+        Little speed-up by removing the matrix product between identity and noise
+        """
+        E_force, E, _ = self.basis_vector(x, v)
         mem = alpha * (last_rmi + 0.5 * self.dt * last_E @ self.kernel[0, :]) + (1.0 - alpha) * (rmi + 0.5 * self.dt * E @ self.kernel[0, :])
-        return v, np.matmul(E_force, self.force_coeff) + E_noise[0, :].T @ fr - mem  # Find a way to have the square root of E_noise
+        return v, np.matmul(E_force, self.force_coeff) + fr - mem
 
     def _rk_step(self, x, v, rmi, fr, last_E, last_rmi):
         k1x, k1v = self._f_rk(x, v, rmi, fr, 1.0, last_E, last_rmi)
@@ -295,6 +298,17 @@ class Integrator_gle_const_kernel(Integrator_gle):
     A derived class in which we the kernel is supposed independent of the position
     """
 
+    # def __init__(self, *args, **kwargs):
+    #     """
+    #     """
+    #     Integrator_gle.__init__(self, *args, **kwargs)
+    #
+    #     if coeffs_noise_kernel is None:
+    #         kernel_gram = pos_gle.compute_kernel_gram()
+    #         coeffs_noise_kernel = np.linalg.inv(kernel_gram) @ pos_gle.bkbkcorrw[0, :, :]
+    #     kernel_noise = np.einsum("kl,ikd->ild", coeffs_noise_kernel, self.kernel)
+    #     self.noise_generator = ColoredNoiseGenerator(kernel_noise, pos_gle.time[:, 0], rng=rng)
+
     def basis_vector(self, x, v):
         bk = self.basis.basis(x)
         E = v
@@ -309,6 +323,28 @@ class Integrator_gle_const_kernel(Integrator_gle):
         E_force, E, _ = self.basis_vector(x, v)
         mem = alpha * (last_rmi + 0.5 * self.dt * last_E @ self.kernel[0, :]) + (1.0 - alpha) * (rmi + 0.5 * self.dt * E @ self.kernel[0, :])
         return v, np.matmul(E_force, self.force_coeff) + fr - mem
+
+
+class Integrator_posgle(Integrator_gle):
+    """
+    A test class for development of position-dependent noise
+    """
+
+    # def __init__(self, *args, **kwargs):
+    #     """
+    #     """
+    #     Integrator_gle.__init__(self, *args, **kwargs)
+    #
+    #     if coeffs_noise_kernel is None:
+    #         kernel_gram = pos_gle.compute_kernel_gram()
+    #         coeffs_noise_kernel = np.linalg.inv(kernel_gram) @ pos_gle.bkbkcorrw[0, :, :]
+    #     kernel_noise = np.einsum("kl,ikd->ild", coeffs_noise_kernel, self.kernel)
+    #     self.noise_generator = ColoredNoiseGenerator(kernel_noise, pos_gle.time[:, 0], rng=rng)
+
+    def _f_rk(self, x, v, rmi, fr, alpha, last_E, last_rmi):
+        E_force, E, E_noise = self.basis_vector(x, v)
+        mem = alpha * (last_rmi + 0.5 * self.dt * last_E @ self.kernel[0, :]) + (1.0 - alpha) * (rmi + 0.5 * self.dt * E @ self.kernel[0, :])
+        return v, np.matmul(E_force, self.force_coeff) + E_noise[0, :].T @ fr - mem  # Find a way to have the square root of E_noise
 
 
 class BGLEIntegrator(Integrator_gle_const_kernel):
