@@ -77,6 +77,7 @@ class Pos_gle_base(object):
         self.force_coeff = None
 
         self.mass = None
+        self.eff_mass = None
         self.kernel_gram = None
 
         self.method = None
@@ -218,11 +219,11 @@ class Pos_gle_base(object):
         for i, xva in enumerate(self.xva_list):
             v2sum += np.einsum("ik,ij->kj", xva["v"], xva["v"])
         v2 = v2sum / self.weightsum
-        mass = kT * np.linalg.inv(v2)
+        self.eff_mass = kT * np.linalg.inv(v2)
 
         if self.verbose:
-            print("Found effective mass:", mass)
-        return mass
+            print("Found effective mass:", self.eff_mass)
+        return self.eff_mass
 
     def compute_pos_effective_mass(self, kT=1.0):
         """
@@ -502,7 +503,7 @@ class Pos_gle_base(object):
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="force")
         return np.einsum("ik,kl->il", E, coeffs)  # Return the force as array (nb of evalution point x dim_obs)
 
-    def pmf_eval(self, x, coeffs=None, kT=1.0):
+    def pmf_eval(self, x, coeffs=None, kT=1.0, set_zero=True):
         """
         Compute free energy via integration of the mean force at points x.
         This assume that the effective mass is independent of the position.
@@ -517,11 +518,11 @@ class Pos_gle_base(object):
         else:  # Check shape
             if coeffs.shape != (self.N_basis_elt_force, self.dim_obs):
                 raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
-        if self.mass is None:
-            self.compute_pos_effective_mass(kT=kT)
+        if self.eff_mass is None:
+            self.compute_effective_mass(kT=kT)
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="pmf")
-        pmf = -1 * np.einsum("ik,kl->il", E, np.matmul(coeffs, self.mass)) / kT
-        return pmf - np.min(pmf)
+        pmf = -1 * np.einsum("ik,kl->il", E, np.matmul(coeffs, self.eff_mass)) / kT
+        return pmf - float(set_zero) * np.min(pmf)
 
     def kernel_eval(self, x, coeffs_ker=None):
         """
