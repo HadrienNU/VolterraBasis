@@ -63,6 +63,61 @@ class ColoredNoiseGenerator:
         return colored_noise[:size] * np.sqrt(self.dt)
 
 
+class KarhunenLoeveNoiseGenerator:
+    """
+    A class for the generation of colored noise.
+    Use Karhunen–Loève decomposition of the kernel
+    for non stationary noise
+    """
+
+    @staticmethod
+    def _generate_stationary_covariancematrix(kernel, backward_kernel=None):
+        """
+        From kernel generate the covariance matrix of the noise, ie the time-dependent kernel matrix
+        """
+        N_size = kernel.shape[0]
+        if backward_kernel is None:
+            backward_kernel = kernel[:0:-1]
+        kernel_sym = np.concatenate((backward_kernel, kernel))
+        cov_mat = np.zeros((N_size, N_size))
+
+        cov_mat[:, 0] = kernel
+        for n in range(1, N_size):
+            cov_mat[:, n] = kernel_sym[N_size - n - 1 : -n]
+        return cov_mat
+
+    def __init__(self, kernel, t, rng=np.random.normal):
+        """
+        Create an instance of the KarhunenLoeveNoiseGenerator class.
+
+        Parameters
+        ----------
+        kernel : numpy.array
+            The correlation function of the noise.
+        t : numpy.array
+            The time values of kernel.
+        """
+
+        self.t = t.ravel()
+        self.dt = self.t[1] - self.t[0]
+
+        self.rng = rng
+        self.kernel = kernel
+
+        self.lenght = np.min(kernel.shape)
+
+        self.eigvals, self.eigvect = np.linalg.eig(self.kernel)
+
+    def generate(self, size):
+        if size > self.lenght:
+            raise ValueError("Cannot generate noise for longuer time than the one in the kernel\n Use stationary or periodic assumption to go further")
+            # TODO: Use stationary assumption that kernel does not evolve anymore to generate more noise
+            # TODO: Use periodic assumption
+        white_noise = self.rng(size=self.lenght)
+        colored_noise = self.eigvect @ np.diag(np.sqrt(self.eigvals)) @ white_noise
+        return colored_noise[:size] * np.sqrt(self.dt)
+
+
 class PosColoredNoiseGenerator:
     """
     A class for the generation of colored noise.

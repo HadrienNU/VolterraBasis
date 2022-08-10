@@ -488,6 +488,43 @@ class Pos_gle_base(object):
         else:
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
 
+    def compute_force_kernel_corrs(self, large=False):
+        """
+        Compute correlation functions between the force and the kernel.
+
+        Parameters
+        ----------
+        large : bool, default=False
+            When large is true, it use a slower way to compute correlation that is less demanding in memory
+        """
+        if self.verbose:
+            print("Calculate force_kernel correlation functions...")
+        if self.force_coeff is None:
+            raise Exception("Mean force has not been computed.")
+        res_corrs = np.zeros((self.trunc_ind, self.dim_obs, self.N_basis_elt_kernel))
+
+        for weight, xva in zip(self.weights, self.xva_list):
+            E_force, E, _ = self.basis_vector(xva)
+            if self.rank_projection:
+                E = np.einsum("kj,ij->ik", self.P_range, E)
+            force = np.matmul(E_force, self.force_coeff)
+            if not large:
+                try:
+                    res_corrs += weight * correlation_ND(force, E, trunc=self.trunc_ind)
+                except MemoryError:  # If too big slow way
+                    if self.verbose:
+                        print("Too many basis function, compute correlations one by one (slow)")
+                    for n in range(E.shape[1]):
+                        for d in range(self.dim_obs):
+                            res_corrs[:, d, n] += weight * correlation_1D(force[:, d], E[:, n], trunc=self.trunc_ind)
+            else:
+                for n in range(E.shape[1]):
+                    for d in range(self.dim_obs):
+                        res_corrs[:, d, n] += weight * correlation_1D(force[:, d], E[:, n], trunc=self.trunc_ind)
+
+        res_corrs /= self.weightsum
+        return res_corrs
+
     def force_eval(self, x, coeffs=None):
         """
         Evaluate the force at given points x.

@@ -7,8 +7,37 @@ Some functionnal fit of the memory kernel
 
 import numpy as np
 import scipy.optimize
+import scipy.integrate
 
 from .prony_fit import prony_series_eval, prony_fit_times_serie
+
+
+def asymptotic(x, a, b):
+    return a + b / x
+
+
+def asymptotic_fit_integral(times, data):
+    """
+    Compute cumulative integral and fit last part of it with a+b/t to get asymptotic
+    We only consider last part
+    """
+    integral = scipy.integrate.cumulative_trapezoid(data, times, initial=0)[len(times) // 2 :]
+    popt, pcov = scipy.optimize.curve_fit(asymptotic, times[len(times) // 2 :], integral)
+    return popt
+
+
+def markovian_friction(times, kernel):
+    """
+    Compute long-time limit of the integral of the memory kernel
+    """
+    _, dim_basis, dim_x = kernel.shape
+    popt = [[0] * dim_basis for i in range(dim_x)]
+    for d in range(dim_x):
+        for k in range(dim_basis):
+            # Idealement il faudrait calculer la valeur de l'intégrale pour
+            integral_val = scipy.integrate.simpson(kernel[:, k, d], times.ravel())  # Trouver un moyen d'avoir le comportemement à temps long
+            popt[d][k] = integral_val
+    return type, popt
 
 
 def exp_fct(t, a, b):

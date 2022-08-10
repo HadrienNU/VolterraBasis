@@ -1,5 +1,6 @@
 import numpy as np
 import xarray as xr
+import scipy.interpolate
 from ._version import __version__
 
 from .pos_gle_instance import Pos_gle, Pos_gle_with_friction, Pos_gle_no_vel_basis, Pos_gle_const_kernel, Pos_gle_hybrid, Pos_gle_overdamped, Pos_gle_overdamped_const_kernel, Pos_gle_linear_proj
@@ -82,7 +83,7 @@ def compute_a(xvf):
     return xva.dropna("time")
 
 
-def compute_va(xf, correct_jumps=False):
+def compute_va(xf, correct_jumps=False, jump=2 * np.pi, jump_thr=1.75 * np.pi):
     """
     Computes velocity and acceleration from a dataset with ['t', 'x'] as
     returned by xframe.
@@ -97,7 +98,9 @@ def compute_va(xf, correct_jumps=False):
     diffs = xf - xf.shift({"time": 1})
     dt = xf.attrs["dt"]
     if correct_jumps:  # TODO
-        raise NotImplementedError("Periodic data are not implemented yet")
+        diffs = xr.where(diffs["x"] > -jump_thr, diffs, diffs + jump)
+        diffs = xr.where(diffs["x"] < jump_thr, diffs, diffs - jump)
+        # raise NotImplementedError("Periodic data are not implemented yet")
 
     ddiffs = diffs.shift({"time": -1}) - diffs
     sdiffs = diffs.shift({"time": -1}) + diffs
@@ -113,3 +116,60 @@ def compute_element_location(xva, element_finder):
     Get element from trajectory
     """
     return xva.update({"elem": (["time"], element_finder.find(xva["x"].data))})
+
+
+def compute_1d_fe(xva_list, bins=150, kT=2.494, hist=False):
+    """
+    Computes the free energy from the trajectoy using a cubic spline
+    interpolation.
+
+    Parameters
+    ----------
+
+    bins : str, or int, default="auto"
+        The number of bins. It is passed to the numpy.histogram routine,
+        see its documentation for details.
+    hist: bool, default=False
+        If False return the free energy else return the histogram
+    """
+    if isinstance(bins, str):
+        x_bins = np.histogram_bin_edges(np.concatenate([xva["x"].data for xva in xva_list], axis=0), bins="auto")
+    elif isinstance(bins, int):
+        # # D'abord on obtient les bins
+        min_x = np.min([xva["x"].min("time") for xva in xva_list])
+        max_x = np.max([xva["x"].max("time") for xva in xva_list])
+        x_bins = np.linspace(min_x, max_x, bins)
+    else:
+        raise ValueError("bins should be a str or a int")
+
+    mean_val = 0
+    count_bins = 0
+    for xva in xva_list:
+        # add v^2 to the list
+        ds_groups = xva.assign({"v2": xva["v"] * xva["v"]}).groupby_bins("x", x_bins)
+        # print(ds_groups)
+        mean_val += ds_groups.sum().fillna(0)
+        count_bins += ds_groups.count().fillna(0)
+    mass_avg = (mean_val["v2"].sum() / count_bins["v2"].sum()).to_numpy()
+    fehist = (count_bins / count_bins.sum())["x"]
+    mean_val = mean_val / count_bins
+    pf = fehist.to_numpy()
+
+    xfa = (x_bins[1:] + x_bins[:-1]) / 2.0
+    if hist:
+        return xfa, pf
+
+    xf = xfa[np.nonzero(pf)]
+    fe = -np.log(pf[np.nonzero(pf)])
+    fe -= np.min(fe)
+    pf_bis = pf[np.nonzero(pf)]
+    mass = mean_val["v2"].to_numpy()[np.nonzero(pf)]
+    mean_a = mean_val["a"].to_numpy()[np.nonzero(pf)]
+
+    fe_spline = scipy.interpolate.splrep(xf, fe, s=0)
+    force = -1 * scipy.interpolate.splev(xf, fe_spline, der=1) * kT / mass_avg
+
+    mass_rho_spline = scipy.interpolate.splrep(xf, mass * pf_bis, s=0)
+    force_tot = scipy.interpolate.splev(xf, mass_rho_spline, der=1) / pf_bis
+
+    return xf, fe, force, mean_a, force_tot, mass

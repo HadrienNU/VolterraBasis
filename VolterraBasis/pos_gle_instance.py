@@ -174,6 +174,29 @@ class Pos_gle_const_kernel(Pos_gle_base):
         else:
             raise ValueError("Basis evaluation goal not specified")
 
+    def compute_linear_part_force(self):
+        """
+        Computes the mean force from the trajectories.
+        """
+        if self.verbose:
+            print("Calculate linear part of the force...")
+        avg_disp = np.zeros((1, self.dim_obs))
+        avg_gram = np.zeros((1, 1))
+        for weight, xva in zip(self.weights, self.xva_list):
+            E = xva["x"].data
+            avg_disp += np.matmul(E.T, self.force_eval(xva)) / self.weightsum
+            avg_gram += np.matmul(E.T, E) / self.weightsum
+        print(avg_gram)
+        self.linear_force_part = avg_disp / avg_gram
+        return self.linear_force_part
+
+    def eval_non_linear_force(self, x, coeffs=None):
+        """
+        Evaluate the force at given points x.
+        If coeffs is given, use provided coefficients instead of the force
+        """
+        return self.force_eval(x, coeffs)  # - self.linear_force_part * x["x"].data  # Return the force as array (nb of evalution point x dim_obs)
+
 
 class Pos_gle_hybrid(Pos_gle_base):
     """
@@ -231,8 +254,8 @@ class Pos_gle_overdamped(Pos_gle_base):
     Extraction of position dependent memory kernel for overdamped dynamics.
     """
 
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, L_obs="v"):
-        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc, L_obs)
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, trunc=1.0, L_obs="v"):
+        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, trunc, L_obs)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt
         if self.basis.const_removed:
@@ -253,6 +276,27 @@ class Pos_gle_overdamped(Pos_gle_base):
             return E, E, dE
         else:
             raise ValueError("Basis evaluation goal not specified")
+
+    def pmf_eval(self, x, coeffs=None, kT=1.0, set_zero=True):
+        """
+        Compute free energy via integration of the mean force at points x.
+        This assume that the effective mass is independent of the position.
+        If coeffs is given, use provided coefficients instead of the force coefficients.
+        """
+        if self.dim_obs > 1:
+            print("Warning: Computation of the free energy for dimensions higher than 1 is likely to be incorrect.")
+        if coeffs is None:
+            if self.force_coeff is None:
+                raise Exception("Mean force has not been computed.")
+            coeffs = self.force_coeff
+        else:  # Check shape
+            if coeffs.shape != (self.N_basis_elt_force, self.dim_obs):
+                raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
+        # if self.eff_mass is None:
+        #     self.compute_effective_mass(kT=kT)
+        E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="pmf")
+        pmf = -1 * np.einsum("ik,kl->il", E, coeffs) / kT
+        return pmf - float(set_zero) * np.min(pmf)
 
 
 class Pos_gle_overdamped_const_kernel(Pos_gle_base):
