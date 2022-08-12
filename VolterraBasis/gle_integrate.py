@@ -71,7 +71,7 @@ class KarhunenLoeveNoiseGenerator:
     """
 
     @staticmethod
-    def _generate_stationary_covariancematrix(kernel, backward_kernel=None):
+    def generate_stationary_covariancematrix(kernel, backward_kernel=None):
         """
         From kernel generate the covariance matrix of the noise, ie the time-dependent kernel matrix
         """
@@ -86,7 +86,7 @@ class KarhunenLoeveNoiseGenerator:
             cov_mat[:, n] = kernel_sym[N_size - n - 1 : -n]
         return cov_mat
 
-    def __init__(self, kernel, t, rng=np.random.normal):
+    def __init__(self, kernel, dt, rng=np.random.normal):
         """
         Create an instance of the KarhunenLoeveNoiseGenerator class.
 
@@ -97,9 +97,7 @@ class KarhunenLoeveNoiseGenerator:
         t : numpy.array
             The time values of kernel.
         """
-
-        self.t = t.ravel()
-        self.dt = self.t[1] - self.t[0]
+        self.dt = dt
 
         self.rng = rng
         self.kernel = kernel
@@ -108,7 +106,9 @@ class KarhunenLoeveNoiseGenerator:
 
         self.eigvals, self.eigvect = np.linalg.eig(self.kernel)
 
-    def generate(self, size):
+    def generate(self, size=None):
+        if size is None:
+            size = self.lenght
         if size > self.lenght:
             raise ValueError("Cannot generate noise for longuer time than the one in the kernel\n Use stationary or periodic assumption to go further")
             # TODO: Use stationary assumption that kernel does not evolve anymore to generate more noise

@@ -76,7 +76,7 @@ class Pos_gle_base(object):
         self.dotbkbkcorrw = None
         self.force_coeff = None
 
-        self.mass = None
+        self.inv_mass_coeff = None
         self.eff_mass = None
         self.kernel_gram = None
 
@@ -227,16 +227,18 @@ class Pos_gle_base(object):
 
     def compute_pos_effective_mass(self, kT=1.0):
         """
-        Return position-dependent effective mass
+        Return position-dependent effective inverse mass
         """
         if self.verbose:
             print("Calculate kernel gram...")
-        avg_gram = np.zeros((self.N_basis_elt_kernel, self.N_basis_elt_kernel))
+        pos_inv_mass = np.zeros((self.dim_x, self.N_basis_elt_force, self.dim_x))
+        avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
         for weight, xva in zip(self.weights, self.xva_list):
-            _, E, _ = self.basis_vector(xva, compute_for="corrs")
+            E = self.basis_vector(xva, compute_for="force")
+            pos_inv_mass += np.einsum("ik,ij,il->klj", xva["v"], xva["v"], E) / self.weightsum
             avg_gram += np.matmul(E.T, E) / self.weightsum
-        self.mass = kT * np.linalg.inv(avg_gram)
-        return self.mass
+        self.inv_mass_coeff = kT * np.dot(np.linalg.inv(avg_gram), pos_inv_mass)
+        return self.inv_mass_coeff
 
     def compute_kernel_gram(self):
         """
@@ -559,6 +561,37 @@ class Pos_gle_base(object):
             self.compute_effective_mass(kT=kT)
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="pmf")
         pmf = -1 * np.einsum("ik,kl->il", E, np.matmul(coeffs, self.eff_mass)) / kT
+        return pmf - float(set_zero) * np.min(pmf)
+
+    def inv_mass_eval(self, x, coeffs=None, kT=1.0, set_zero=True):
+        """
+        Compute free energy via integration of the mean force at points x.
+        This assume that the effective mass is independent of the position.
+        If coeffs is given, use provided coefficients instead of the force coefficients.
+        """
+        if coeffs is None:
+            if self.inv_mass_coeff is None:
+                raise Exception("Effective mass has not been computed.")
+            coeffs = self.inv_mass_coeff
+        else:  # Check shape
+            if coeffs.shape != (self.N_basis_elt_force, self.dim_x, self.dim_x):
+                raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_x, self.dim_x)))
+        E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="force")
+        return np.einsum("ik,kld->ild", E, coeffs)  # Return the force as array (nb of evalution point x dim_obs x dim_obs)
+
+    def pmf_num_int_eval(self, x, kT=1.0, set_zero=True):
+        """
+        Compute free energy via integration of the mean force at points x.
+        This take into accound the position dependent mass, but the integration is numeric
+        """
+        force = self.force_eval(x)
+        inv_mass = self.inv_mass_eval(x)
+        dx = x[1] - x[0]
+
+        diff_mass = np.gradient(inv_mass) / dx  # Numerical derivative
+        grad_pmf = -1 * (force - diff_mass / kT) / inv_mass
+        pmf = np.cumsum(grad_pmf) * dx
+
         return pmf - float(set_zero) * np.min(pmf)
 
     def kernel_eval(self, x, coeffs_ker=None):
