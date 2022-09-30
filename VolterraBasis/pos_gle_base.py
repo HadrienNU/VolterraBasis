@@ -584,8 +584,9 @@ class Pos_gle_base(object):
         Compute free energy via integration of the mean force at points x.
         This take into accound the position dependent mass, but the integration is numeric
         """
-        force = self.force_eval(x)
-        inv_mass = self.inv_mass_eval(x)
+        force = self.force_eval(x)[:, 0]
+        inv_mass = self.inv_mass_eval(x)[:, 0, 0]
+        x = np.asarray(x).ravel()
         dx = x[1] - x[0]
 
         diff_mass = np.gradient(inv_mass) / dx  # Numerical derivative
