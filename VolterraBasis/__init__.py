@@ -83,6 +83,23 @@ def compute_a(xvf):
     return xva.dropna("time")
 
 
+def compute_a_frompos(xvf):
+    """
+    Computes the acceleration from a dataset with ['t', 'x', 'v'].
+
+    Parameters
+    ----------
+    xvf : xarray dataset (['x', 'v'])
+    """
+    # Compute diff
+    diffs = xvf - xvf.shift({"time": 1})
+    dt = xvf.attrs["dt"]
+
+    ddiffs = diffs.shift({"time": -1}) - diffs
+    xva = xvf[["x", "v"]].assign({"a": ddiffs["x"] / dt ** 2})
+    return xva.dropna("time")
+
+
 def compute_va(xf, correct_jumps=False, jump=2 * np.pi, jump_thr=1.75 * np.pi):
     """
     Computes velocity and acceleration from a dataset with ['t', 'x'] as
@@ -107,6 +124,33 @@ def compute_va(xf, correct_jumps=False, jump=2 * np.pi, jump_thr=1.75 * np.pi):
 
     # xva = pd.DataFrame({"t": xf["t"], "x": xf["x"], "v": sdiffs["x"] / (2.0 * dt), "a": ddiffs["x"] / dt ** 2}, index=xf.index)
     xva = xf[["x"]].assign({"v": sdiffs["x"] / (2.0 * dt), "a": ddiffs["x"] / dt ** 2})
+
+    return xva.dropna("time")
+
+
+def compute_va_gjf(xf, correct_jumps=False, jump=2 * np.pi, jump_thr=1.75 * np.pi):
+    """
+    Computes velocity and acceleration from a dataset with ['t', 'x'] as
+    returned by xframe.
+
+    Parameters
+    ----------
+    xf : xarray dataframe (['t', 'x'])
+
+    correct_jumps : bool, default=False
+        Jumps in the trajectory are removed (relevant for periodic data).
+    """
+    diffs = xf - xf.shift({"time": 1})
+    dt = xf.attrs["dt"]
+    if correct_jumps:  # TODO
+        diffs = xr.where(diffs["x"] > -jump_thr, diffs, diffs + jump)
+        diffs = xr.where(diffs["x"] < jump_thr, diffs, diffs - jump)
+        # raise NotImplementedError("Periodic data are not implemented yet")
+
+    ddiffs = diffs.shift({"time": -1}) - diffs
+
+    # xva = pd.DataFrame({"t": xf["t"], "x": xf["x"], "v": sdiffs["x"] / (2.0 * dt), "a": ddiffs["x"] / dt ** 2}, index=xf.index)
+    xva = xf[["x"]].assign({"v": diffs["x"] / dt, "a": ddiffs["x"] / dt ** 2})
 
     return xva.dropna("time")
 
