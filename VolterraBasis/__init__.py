@@ -67,7 +67,7 @@ def xframe(x, time, v=None, a=None, fix_time=False, round_time=1.0e-4, dt=-1):
     return ds
 
 
-def compute_a(xvf):
+def compute_a_from_vel(xvf):
     """
     Computes the acceleration from a dataset with ['t', 'x', 'v'].
 
@@ -83,7 +83,7 @@ def compute_a(xvf):
     return xva.dropna("time")
 
 
-def compute_a_frompos(xvf):
+def compute_a(xvf):
     """
     Computes the acceleration from a dataset with ['t', 'x', 'v'].
 

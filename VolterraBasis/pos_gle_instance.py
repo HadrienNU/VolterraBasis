@@ -254,13 +254,14 @@ class Pos_gle_overdamped(Pos_gle_base):
     Extraction of position dependent memory kernel for overdamped dynamics.
     """
 
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, trunc=1.0, L_obs="v"):
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, trunc=1.0, L_obs="v", rank_projection=False):
         Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, trunc, L_obs)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt
         if self.basis.const_removed:
             self.basis.const_removed = False
             print("Warning: remove_const on basis function have been set to False.")
+        self.rank_projection = rank_projection
 
     def basis_vector(self, xva, compute_for="corrs"):
         E = self.basis.basis(xva["x"].data)
