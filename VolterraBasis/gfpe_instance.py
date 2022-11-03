@@ -57,11 +57,13 @@ class Pos_gfpe(Pos_gle_base):
         if method == "rect":
             p = solve_ide_rect(self.kernel, p0, self.force_coeff, lenTraj, dt)
         elif method == "trapz":
-            p = solve_ide_trapz(self.kernel, p0, self.force_coeff, lenTraj, dt)
+            p = solve_ide_trapz(self.kernel, p0, self.force_coeff, lenTraj, dt)  # Check fortran code
         elif method == "python":
             p = np.zeros((lenTraj, self.kernel.shape[1]))
             p[0, :] = p0[:, 0]
-            for n in range(1, lenTraj):
+            dp = dt * np.einsum("ikj,ik->ij", self.kernel[:1, :, :], p[0:1, :][::-1, :])[0, :]
+            p[1, :] = p[0, :] - dt * dp
+            for n in range(2, lenTraj):
                 m = min(n, self.kernel.shape[0])
                 to_integrate = np.einsum("ikj,ik->ij", self.kernel[:m, :, :], p[n - m : n, :][::-1, :])
                 dp = trapezoid(to_integrate, dx=dt, axis=0)  # vb.fkernel.memory_trapz(kernel, p_t[:n, :], dt)[-1, :]
