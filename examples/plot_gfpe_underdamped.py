@@ -30,8 +30,6 @@ basis_v = bf.SmoothIndicatorFeatures([[-1.1, -1.0], [1.0, 1.1]], "tricube", peri
 basis_comb = bf.TensorialBasis2D(basis_x, basis_v)
 mymem = vb.Pos_gfpe(xva_list, basis_comb, trunc=10, saveall=False)
 print("Dimension of observable", mymem.dim_x)
-mymem.compute_mean_force()
-print(mymem.force_coeff)
 print(mymem.N_basis_elt, mymem.N_basis_elt_force, mymem.N_basis_elt_kernel)
 # print(mymem.basis.b1.n_output_features_, mymem.basis.b2.n_output_features_)
 mymem.compute_corrs()

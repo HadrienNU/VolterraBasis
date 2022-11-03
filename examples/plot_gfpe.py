@@ -23,10 +23,8 @@ for i in range(1, trj.shape[1]):
     xvaf = vb.compute_va(xf)
     xva_list.append(xvaf)
 
-mymem = vb.Pos_gfpe(xva_list, bf.SmoothIndicatorFeatures([[1.4, 1.5]], "quartic"), trunc=10, saveall=False)
+mymem = vb.Pos_gfpe(xva_list, bf.SmoothIndicatorFeatures([[1.4, 1.5]], "tricube"), trunc=10, saveall=False)
 print("Dimension of observable", mymem.dim_x)
-mymem.compute_mean_force()
-print(mymem.force_coeff)
 print(mymem.N_basis_elt, mymem.N_basis_elt_force, mymem.N_basis_elt_kernel)
 # print(mymem.basis.b1.n_output_features_, mymem.basis.b2.n_output_features_)
 mymem.compute_corrs()
@@ -46,5 +44,14 @@ axs.plot(mymem.time, mymem.kernel[:, 0, 0], "-x")
 axs.plot(mymem.time, mymem.kernel[:, 0, 1], "-x")
 axs.plot(mymem.time, mymem.kernel[:, 1, 0], "-x")
 axs.plot(mymem.time, mymem.kernel[:, 1, 1], "-x")
+
+mymem.kernel[:, :, 1] = 0
+t_new, p_t = mymem.solve_gfpe(5000, method="trapz", p0=[1.0, 0.0])
+t_new, p_t_bis = mymem.solve_gfpe(5000, method="python", p0=[1.0, 0.0])
+
+fig_pt = plt.figure("Probability of time")
+plt.grid()
+plt.plot(t_new, p_t[:, 0, 0])
+plt.plot(t_new, p_t_bis[:, 0])
 
 plt.show()

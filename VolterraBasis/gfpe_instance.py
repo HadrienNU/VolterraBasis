@@ -1,5 +1,5 @@
 import numpy as np
-import xarray as xr
+from scipy.integrate import trapezoid
 
 from .pos_gle_base import Pos_gle_base
 from .fkernel import solve_ide_rect, solve_ide_trapz
@@ -25,6 +25,8 @@ class Pos_gfpe(Pos_gle_base):
             E_force, E, dE = self.basis_vector(self.xva_list[i])
             self.xva_list[i].update({"dE": (["time", "dim_dE"], dE)})
 
+        self.set_zero_force()  # Unless non hermitian, this should be true, we can also compute mean force after if wanted
+
     def basis_vector(self, xva, compute_for="corrs"):
         E = self.basis.basis(xva["x"].data)
         if compute_for == "force":
@@ -40,19 +42,28 @@ class Pos_gfpe(Pos_gle_base):
         else:
             raise ValueError("Basis evaluation goal not specified")
 
-    def solve_ide(self, lenTraj, method="trapz", E0=None):
+    def solve_gfpe(self, lenTraj, method="trapz", p0=None):
         """
         Solve the integro-differential equation
         """
         if self.kernel is None:
             raise Exception("Kernel has not been computed.")
-        if E0 is None:
-            E0 = self.bkbkcorrw[0, :, :]
+        if p0 is None:
+            p0 = self.bkbkcorrw[0, :, :]
         else:
-            E0 = np.asarray(E0).reshape(self.dim_obs, self.dim_obs)
+            p0 = np.asarray(p0).reshape(self.dim_obs, 1)
+        print("p0", p0.shape)
         dt = self.xva_list[0].attrs["dt"]
         if method == "rect":
-            E = solve_ide_rect(self.kernel, E0, self.force_coeff, lenTraj, dt)
+            p = solve_ide_rect(self.kernel, p0, self.force_coeff, lenTraj, dt)
         elif method == "trapz":
-            E = solve_ide_trapz(self.kernel, E0, self.force_coeff, lenTraj, dt)
-        return np.arange(lenTraj) * dt, E
+            p = solve_ide_trapz(self.kernel, p0, self.force_coeff, lenTraj, dt)
+        elif method == "python":
+            p = np.zeros((lenTraj, self.kernel.shape[1]))
+            p[0, :] = p0[:, 0]
+            for n in range(1, lenTraj):
+                m = min(n, self.kernel.shape[0])
+                to_integrate = np.einsum("ikj,ik->ij", self.kernel[:m, :, :], p[n - m : n, :][::-1, :])
+                dp = trapezoid(to_integrate, dx=dt, axis=0)  # vb.fkernel.memory_trapz(kernel, p_t[:n, :], dt)[-1, :]
+                p[n, :] = p[n - 1, :] - dt * dp
+        return np.arange(lenTraj) * dt, p

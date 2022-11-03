@@ -418,13 +418,13 @@ end subroutine corrs_trapz
 
 
 
-subroutine solve_ide_rect(len_mem, dim_basis, kernel, E0, f_coeff,lenTraj, dt, E)
+subroutine solve_ide_rect(len_mem, dim_basis, dim_other, kernel, E0, f_coeff,lenTraj, dt, E)
   implicit none
-  integer,intent(in)::lenTraj,len_mem,dim_basis
+  integer,intent(in)::lenTraj,len_mem,dim_basis,dim_other
   double precision,dimension(0:len_mem, dim_basis, dim_basis),intent(in)::kernel
   double precision,dimension(dim_basis, dim_basis),intent(in)::f_coeff
-  double precision,dimension(dim_basis, dim_basis),intent(in)::E0
-  double precision,dimension(0:lenTraj-1, dim_basis, dim_basis),intent(out)::E
+  double precision,dimension(dim_basis, dim_other),intent(in)::E0
+  double precision,dimension(0:lenTraj-1, dim_basis, dim_other),intent(out)::E
   double precision,intent(in)::dt
   double precision,dimension(dim_basis,dim_basis)::memory
   integer::i,j
@@ -442,13 +442,13 @@ subroutine solve_ide_rect(len_mem, dim_basis, kernel, E0, f_coeff,lenTraj, dt, E
 
 end subroutine solve_ide_rect
 
-subroutine solve_ide_trapz(len_mem, dim_basis, kernel, E0, f_coeff,lenTraj, dt, E)
+subroutine solve_ide_trapz(len_mem, dim_basis, dim_other, kernel, E0, f_coeff,lenTraj, dt, E)
   implicit none
-  integer,intent(in)::lenTraj,len_mem,dim_basis
+  integer,intent(in)::lenTraj,len_mem,dim_basis,dim_other
   double precision,dimension(0:len_mem, dim_basis, dim_basis),intent(in)::kernel
   double precision,dimension(dim_basis, dim_basis),intent(in)::f_coeff
-  double precision,dimension(dim_basis, dim_basis),intent(in)::E0
-  double precision,dimension(0:lenTraj-1, dim_basis, dim_basis),intent(out)::E
+  double precision,dimension(dim_basis, dim_other),intent(in)::E0
+  double precision,dimension(0:lenTraj-1, dim_basis, dim_other),intent(out)::E
   double precision,intent(in)::dt
   double precision,dimension(dim_basis,dim_basis)::memory
   integer::i,j
