@@ -1,4 +1,5 @@
 import numpy as np
+import xarray as xr
 
 from .pos_gle_base import Pos_gle_base
 from .fkernel import solve_ide_rect, solve_ide_trapz
@@ -9,22 +10,19 @@ class Pos_gfpe(Pos_gle_base):
     Linear projection of the basis on the basis. The resulting Volterra equation is a generalized Fokker Planck equation
     """
 
-    def __init__(self, *args, **kwargs):
-        Pos_gle_base.__init__(self, *args, **kwargs)
+    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, trunc=1.0, **kwargs):
+        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, trunc, L_obs="v", **kwargs)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt
         if self.basis.const_removed:
             self.basis.const_removed = False
             print("Warning: remove_const on basis function have been set to False.")
-
+        self.rank_projection = False
         self.dim_obs = self.N_basis_elt
         self.L_obs = "dE"
 
         for i in range(len(self.xva_list)):
             E_force, E, dE = self.basis_vector(self.xva_list[i])
-            # Ici on échange dim_x avec dim_proj et dim_x devient Nsplines
-            # Ca permet de faire une projection linéaire sur la base
-            # xvaf.rename_dims({"dim_x": "dim"})
             self.xva_list[i].update({"dE": (["time", "dim_dE"], dE)})
 
     def basis_vector(self, xva, compute_for="corrs"):

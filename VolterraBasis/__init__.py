@@ -157,6 +157,15 @@ def compute_va_gjf(xf, correct_jumps=False, jump=2 * np.pi, jump_thr=1.75 * np.p
     return xva.dropna("time")
 
 
+def concat_underdamped(xva):
+    """
+    Return the DataSet such that x is now (x,v) and v is now (v,a),
+    """
+    new_x = xr.concat([xva["x"], xva["v"]], dim="dim_x")
+    new_v = xr.concat([xva["v"], xva["a"]], dim="dim_x")
+    return xr.Dataset({"x": new_x, "v": new_v}, attrs={"dt": xva.dt})
+
+
 def compute_element_location(xva, element_finder):
     """
     Get element from trajectory

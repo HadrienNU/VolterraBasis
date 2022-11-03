@@ -58,6 +58,18 @@ class TensorialBasis2D(TransformerMixin):
     def antiderivative(self, X, order=1):
         raise NotImplementedError("Don't try this")
 
+    def comb_indices(self, i, j):
+        """
+        Get index k of the (i,j) element of the basis
+        """
+        return np.ravel_multi_index((i, j), (self.b1.n_output_features_, self.b2.n_output_features_))
+
+    def split_index(self, k):
+        """
+        Get (i,j) decomposition of the keme element of the basis
+        """
+        return np.unravel_index(k, (self.b1.n_output_features_, self.b2.n_output_features_))
+
 
 #
 # class TensorialBasis(TransformerMixin):
