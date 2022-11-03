@@ -3,8 +3,9 @@ import xarray as xr
 import scipy.interpolate
 from ._version import __version__
 
-from .pos_gle_instance import Pos_gle, Pos_gle_with_friction, Pos_gle_no_vel_basis, Pos_gle_const_kernel, Pos_gle_hybrid, Pos_gle_overdamped, Pos_gle_overdamped_const_kernel, Pos_gle_linear_proj
+from .pos_gle_instance import Pos_gle, Pos_gle_with_friction, Pos_gle_no_vel_basis, Pos_gle_const_kernel, Pos_gle_hybrid, Pos_gle_overdamped, Pos_gle_overdamped_const_kernel
 from .pos_gle_fem import ElementFinder, Pos_gle_fem
+from .gfpe_instance import Pos_gfpe
 from .gle_integrate import Integrator_gle, Integrator_gle_const_kernel, KarhunenLoeveNoiseGenerator
 from .memory_fit import memory_fit, memory_fit_eval, memory_fit_kernel, memory_kernel_eval
 from .prony_fit import prony_inspect_data, prony_fit_times_serie, prony_fit_kernel, prony_series_eval, prony_series_kernel_eval
@@ -19,6 +20,7 @@ __all__ += ["correlation"]
 __all__ += ["memory_fit", "memory_fit_eval", "memory_fit_kernel", "memory_kernel_eval"]
 __all__ += ["prony_fit_times_serie", "prony_series_eval", "prony_fit_kernel", "prony_series_kernel_eval", "prony_inspect_data"]
 __all__ += ["ElementFinder", "Pos_gle_fem"]
+__all__ += ["Pos_gfpe"]
 
 
 def xframe(x, time, v=None, a=None, fix_time=False, round_time=1.0e-4, dt=-1):
