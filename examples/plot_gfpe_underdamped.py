@@ -55,37 +55,50 @@ axs.plot(mymem.time, mymem.kernel[:, basis_comb.comb_indices(1, 0), basis_comb.c
 sink_index = basis_comb.comb_indices(1, 1)
 mymem.kernel[:, :, sink_index] = 0
 p0 = np.zeros(mymem.dim_obs)
-p0[0] = 1
+p0[basis_comb.comb_indices(0, 1)] = 1
 t_new, p_t = mymem.solve_gfpe(5000, method="trapz", p0=p0)
 p_t = p_t[:, :, 0]
 fig_pt = plt.figure("Probability of time")
 plt.grid()
-plt.plot(t_new, p_t[:, 0], "-")
+plt.plot(t_new, p_t[:, :], "-")
 
 
 fig, ax_anim = plt.subplots()
 ax_anim.grid()
 dt = t_new[1] - t_new[0]
-time_text = ax_anim.text(0.85, 0.95, "0.0", horizontalalignment="left", verticalalignment="top", transform=ax_anim.transAxes)
+time_text = ax_anim.text(0.05, 1.05, "0.0", horizontalalignment="left", verticalalignment="top", transform=ax_anim.transAxes)
 
 xrange = np.linspace(0.8, 3.0, 50)
 yrange = np.linspace(-2.0, 2.0, 50)
 # Do mesh
 xx, yy = np.meshgrid(xrange, yrange)
-E_eval = mymem.basis_vector(vb.pos_gle_base._convert_input_array_for_evaluation(np.column_stack((xx, yy)), 2), compute_for="force")
+E_eval = basis_comb.basis(np.column_stack((xx.flatten(), yy.flatten())))
 proba_val = E_eval @ p_t[0, :]
-print(E_eval.shape, proba_val.shape)
-ln = ax_anim.pcolormesh(xx, yy, proba_val.reshape(50, 50).T, shading="gouraud")
+print(E_eval.shape, proba_val.shape, xx.shape, yy.shape, np.column_stack((xx.flatten(), yy.flatten())).shape)
+quad = ax_anim.pcolormesh(xx, yy, proba_val.reshape(50, 50), shading="gouraud", cmap="viridis")
+fig.colorbar(quad)
 
 
 def update(frame):
     proba_val = E_eval @ p_t[frame, :]
-    ln.set_array(proba_val.reshape(50, 50).T)
+    quad.set_array(proba_val.reshape(50, 50))
     time_text.set_text("%.3f" % (frame * dt))
-    return (ln, time_text)
+    return (quad, time_text)
 
 
 ani = animation.FuncAnimation(fig, update, frames=np.arange(p_t.shape[0]), blit=True, interval=10)
 
+
+fig_basis, axis_basis = plt.subplots(2, 1)
+
+Ex_basis = basis_x.basis(xrange.reshape(-1, 1))
+print(Ex_basis.shape)
+
+axis_basis[0].plot(xrange, Ex_basis)
+
+Ev_basis = basis_v.basis(yrange.reshape(-1, 1))
+print(Ev_basis.shape)
+
+axis_basis[1].plot(yrange, Ev_basis)
 
 plt.show()
