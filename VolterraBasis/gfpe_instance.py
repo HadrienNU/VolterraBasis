@@ -65,6 +65,18 @@ class Pos_gfpe(Pos_gle_base):
             laplace[n, :, :] = simpson(np.exp(-s * self.time) * self.kernel, self.time, axis=0)
         return s_range, laplace
 
+    def occupations(self):
+        """
+        Compute mean value of the basis function
+        """
+        occ = 0.0
+        weightsum = 0.0
+        for xva in self.xva_list:
+            E = self.basis.basis(xva["x"].data)
+            occ += E.sum(axis=0)
+            weightsum += E.shape[0]
+        return occ / weightsum
+
     def solve_gfpe(self, lenTraj, method="trapz", p0=None):
         """
         Solve the integro-differential equation
@@ -76,7 +88,12 @@ class Pos_gfpe(Pos_gle_base):
         else:
             p0 = np.asarray(p0).reshape(self.dim_obs, -1)
         dt = self.xva_list[0].attrs["dt"]
-        kernel = np.einsum("ikj->ijk", self.kernel)
+        gram_occ = self.bkbkcorrw[0, :, :] @ np.diag(1.0 / self.occupations())
+        # print(gram_occ, np.sum(np.linalg.inv(gram_occ), axis=0), np.sum(gram_occ, axis=0))
+        # p0 = gram_occ @ p0
+        # kernel = np.einsum("jn,ikj,kl->iln", np.linalg.inv(gram_occ), self.kernel, gram_occ)
+        kernel = np.einsum("nj,ikj, kl->inl", np.linalg.inv(gram_occ), self.kernel, gram_occ)
+        # kernel = np.einsum("ikj->ijk", self.kernel)
         if method == "rect":
             p = solve_ide_rect(kernel, p0, self.force_coeff, lenTraj, dt)  # TODO it might worth transpose all the code for the kernel
         elif method == "trapz":
