@@ -204,7 +204,7 @@ class SmoothIndicatorFeatures(TransformerMixin):
         a = min(self.states_boundary[0])  # This way there is no ambiguity on the definition
         b = max(self.states_boundary[0])
         u = (X - a) / (b - a)
-        der = self.boundary(u, deriv_order)
+        der = self.boundary(u, deriv_order) / (b - a) ** deriv_order
         der = np.where(u < 0, 0, der)
         der = np.where(u > 1, 0, der)
 
@@ -216,7 +216,7 @@ class SmoothIndicatorFeatures(TransformerMixin):
             a = min(self.states_boundary[n])  # This way there is no ambiguity on the definition
             b = max(self.states_boundary[n])
             u = (X - a) / (b - a)
-            der = self.boundary(u, deriv_order)
+            der = self.boundary(u, deriv_order) / (b - a) ** deriv_order
             der = np.where(u > 1, 0, der)
 
             features[(Ellipsis, slice(n, n + 1)) + (0,) * deriv_order] = np.where(u < 0, der_next, der)

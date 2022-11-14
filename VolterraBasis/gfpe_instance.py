@@ -74,7 +74,7 @@ class Pos_gfpe(Pos_gle_base):
         if p0 is None:
             p0 = self.bkbkcorrw[0, :, :]
         else:
-            p0 = np.asarray(p0).reshape(self.dim_obs, 1)
+            p0 = np.asarray(p0).reshape(self.dim_obs, -1)
         dt = self.xva_list[0].attrs["dt"]
         kernel = np.einsum("ikj->ijk", self.kernel)
         if method == "rect":
