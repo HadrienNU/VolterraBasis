@@ -53,7 +53,7 @@ axs.plot(mymem.time, mymem.kernel[:, basis_comb.comb_indices(1, 0), basis_comb.c
 
 # Survival problem
 sink_index = basis_comb.comb_indices(1, 1)
-mymem.kernel[:, :, sink_index] = 0
+mymem.set_absorbing_state(sink_index)
 p0 = np.zeros(mymem.dim_obs)
 p0[basis_comb.comb_indices(0, 1)] = 1
 t_new, p_t = mymem.solve_gfpe(5000, method="trapz", p0=p0)
