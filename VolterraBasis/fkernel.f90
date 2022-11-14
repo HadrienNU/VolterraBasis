@@ -460,7 +460,7 @@ subroutine solve_ide_trapz(len_mem, dim_basis, dim_other, kernel, E0, f_coeff,le
      do j=1,min(i-2,len_mem)
        memory=memory-dt*matmul(kernel(j,:,:),E(i-1-j,:,:))
     end do
-    memory=memory-0.5*dt*matmul(E(i-1-min(i-1,len_mem),:,:),kernel(min(i-1,len_mem),:,:))
+    memory=memory-0.5*dt*matmul(kernel(min(i-1,len_mem),:,:),E(i-1-min(i-1,len_mem),:,:))
     E(i,:,:) = E(i-1,:,:)+dt*memory+dt*matmul(f_coeff,E(i-1,:,:))
   end do
 

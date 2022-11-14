@@ -82,13 +82,13 @@ class Pos_gfpe(Pos_gle_base):
         elif method == "trapz":
             p = solve_ide_trapz(kernel, p0, self.force_coeff, lenTraj, dt)  # Check fortran code, this one does not conserve probability
         elif method == "python":
-            p = np.zeros((lenTraj, self.kernel.shape[1]))
-            p[0, :] = p0[:, 0]
-            dp = dt * np.einsum("ijk,ik->ij", kernel[:1, :, :], p[0:1, :][::-1, :])[0, :]
-            p[1, :] = p[0, :] - dt * dp
+            p = np.zeros((lenTraj, p0.shape[0], p0.shape[1]))
+            p[0, :, :] = p0
+            dp = dt * np.einsum("ijk,ikd->ijd", kernel[:1, :, :], p[0:1, :, :][::-1, :, :])[0, :, :]
+            p[1, :, :] = p[0, :, :] - dt * dp
             for n in range(2, lenTraj):
                 m = min(n, self.kernel.shape[0])
-                to_integrate = np.einsum("ijk,ik->ij", kernel[:m, :, :], p[n - m : n, :][::-1, :])
+                to_integrate = np.einsum("ijk,ikd->ijd", kernel[:m, :, :], p[n - m : n, :, :][::-1, :, :])
                 dp = trapezoid(to_integrate, dx=dt, axis=0)  # vb.fkernel.memory_trapz(kernel, p_t[:n, :], dt)[-1, :]
-                p[n, :] = p[n - 1, :] - dt * dp
-        return np.arange(lenTraj) * dt, p
+                p[n, :, :] = p[n - 1, :, :] - dt * dp
+        return np.arange(lenTraj) * dt, np.squeeze(p)
