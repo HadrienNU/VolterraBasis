@@ -428,17 +428,29 @@ subroutine solve_ide_rect(len_mem, dim_basis, dim_other, kernel, E0, f_coeff,len
   double precision,dimension(0:lenTraj-1, dim_basis,dim_other),intent(out)::E
   double precision,intent(in)::dt
   double precision,dimension(dim_basis,dim_other)::memory
+<<<<<<< HEAD
   double precision,dimension(dim_basis,dim_basis)::invK0
   integer::i, max_len
+=======
+  integer::i,j
+>>>>>>> 683737412166c6c702fdf69e03cf73177144935c
 
   E(0,:,:)=E0
 
   invK0 = inv(1+dt*kernel(0,:,:))
 
   do i=1,lenTraj-1
+<<<<<<< HEAD
     max_len = min(i,len_mem)-1
     call rect_integral(memory,dt,max_len,kernel(1:max_len+1,:,:),E(i-1-max_len:i-1,:,:),dim_basis,dim_other,dim_basis)
     E(i,:,:) = matmul(invK0,E(i-1,:,:)-dt*memory+dt*matmul(f_coeff,E(i-1,:,:)))
+=======
+     memory=0.
+    do j=0,min(i-1,len_mem)
+       memory=memory-dt*matmul(kernel(j,:,:),E(i-1-j,:,:))
+    end do
+    E(i,:,:) = E(i-1,:,:)+dt*memory+dt*matmul(f_coeff,E(i-1,:,:))
+>>>>>>> 683737412166c6c702fdf69e03cf73177144935c
   end do
 
 end subroutine solve_ide_rect
@@ -453,17 +465,30 @@ subroutine solve_ide_trapz(len_mem, dim_basis, dim_other, kernel, E0, f_coeff,le
   double precision,dimension(0:lenTraj-1, dim_basis,dim_other),intent(out)::E
   double precision,intent(in)::dt
   double precision,dimension(dim_basis,dim_other)::memory
+<<<<<<< HEAD
   double precision,dimension(dim_basis,dim_basis)::invK0
   integer::i,max_len
+=======
+  integer::i,j
+>>>>>>> 683737412166c6c702fdf69e03cf73177144935c
 
    E(0,:,:)=E0
 
    invK0 = inv(1+0.5*dt*kernel(0,:,:))
 
   do i=1,lenTraj-1
+<<<<<<< HEAD
     max_len = min(i,len_mem)-1
     call trapz_integral(memory,dt,max_len,kernel(1:max_len+1,:,:), E(i-1-max_len:i-1,:,:),dim_basis,dim_other,dim_basis)
     E(i,:,:) = matmul(invK0,E(i-1,:,:)-dt*memory+dt*matmul(f_coeff,E(i-1,:,:)))
+=======
+     memory=-0.5*dt*matmul(kernel(0,:,:),E(i-1,:,:))
+     do j=1,min(i-2,len_mem)
+       memory=memory-dt*matmul(kernel(j,:,:),E(i-1-j,:,:))
+    end do
+    memory=memory-0.5*dt*matmul(kernel(min(i-1,len_mem),:,:),E(i-1-min(i-1,len_mem),:,:))
+    E(i,:,:) = E(i-1,:,:)+dt*memory+dt*matmul(f_coeff,E(i-1,:,:))
+>>>>>>> 683737412166c6c702fdf69e03cf73177144935c
   end do
 
 
