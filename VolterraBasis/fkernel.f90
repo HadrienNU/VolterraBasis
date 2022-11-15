@@ -424,33 +424,26 @@ subroutine solve_ide_rect(len_mem, dim_basis, dim_other, kernel, E0, f_coeff,len
   integer,intent(in)::lenTraj,len_mem,dim_basis,dim_other
   double precision,dimension(0:len_mem, dim_basis, dim_basis),intent(in)::kernel
   double precision,dimension(dim_basis, dim_basis),intent(in)::f_coeff
-  double precision,dimension(dim_basis,dim_other),intent(in)::E0
+  double precision,dimension(dim_basis, dim_other),intent(in)::E0
   double precision,dimension(0:lenTraj-1, dim_basis,dim_other),intent(out)::E
   double precision,intent(in)::dt
-  double precision,dimension(dim_basis,dim_other)::memory
-<<<<<<< HEAD
-  double precision,dimension(dim_basis,dim_basis)::invK0
+  double precision,dimension(dim_basis, dim_other)::memory
+  double precision,dimension(dim_basis,dim_basis)::invK0,id
   integer::i, max_len
-=======
-  integer::i,j
->>>>>>> 683737412166c6c702fdf69e03cf73177144935c
 
   E(0,:,:)=E0
 
-  invK0 = inv(1+dt*kernel(0,:,:))
+  id=0
+  do i=1,dim_basis
+    id(i,i)=1.0
+  end do
+
+  invK0 = inv(id+kernel(0,:,:)*dt**2)
 
   do i=1,lenTraj-1
-<<<<<<< HEAD
     max_len = min(i,len_mem)-1
-    call rect_integral(memory,dt,max_len,kernel(1:max_len+1,:,:),E(i-1-max_len:i-1,:,:),dim_basis,dim_other,dim_basis)
-    E(i,:,:) = matmul(invK0,E(i-1,:,:)-dt*memory+dt*matmul(f_coeff,E(i-1,:,:)))
-=======
-     memory=0.
-    do j=0,min(i-1,len_mem)
-       memory=memory-dt*matmul(kernel(j,:,:),E(i-1-j,:,:))
-    end do
-    E(i,:,:) = E(i-1,:,:)+dt*memory+dt*matmul(f_coeff,E(i-1,:,:))
->>>>>>> 683737412166c6c702fdf69e03cf73177144935c
+    call rect_integral(memory,dt,max_len,kernel(0:max_len,:,:),E(i-max_len:i,:,:),dim_basis,dim_other,dim_basis)
+    E(i,:,:) = matmul(invK0,E(i-1,:,:) -dt*memory+dt*matmul(f_coeff,E(i-1,:,:)))
   end do
 
 end subroutine solve_ide_rect
@@ -465,30 +458,21 @@ subroutine solve_ide_trapz(len_mem, dim_basis, dim_other, kernel, E0, f_coeff,le
   double precision,dimension(0:lenTraj-1, dim_basis,dim_other),intent(out)::E
   double precision,intent(in)::dt
   double precision,dimension(dim_basis,dim_other)::memory
-<<<<<<< HEAD
-  double precision,dimension(dim_basis,dim_basis)::invK0
+  double precision,dimension(dim_basis,dim_basis)::invK0,id
   integer::i,max_len
-=======
-  integer::i,j
->>>>>>> 683737412166c6c702fdf69e03cf73177144935c
 
-   E(0,:,:)=E0
+  E(0,:,:)=E0
+  id=0
+  do i=1,dim_basis
+    id(i,i)=1.0
+  end do
 
-   invK0 = inv(1+0.5*dt*kernel(0,:,:))
+  invK0 = inv(id+0.5*dt**2*kernel(0,:,:))
 
   do i=1,lenTraj-1
-<<<<<<< HEAD
-    max_len = min(i,len_mem)-1
-    call trapz_integral(memory,dt,max_len,kernel(1:max_len+1,:,:), E(i-1-max_len:i-1,:,:),dim_basis,dim_other,dim_basis)
+    max_len = min(i,len_mem)
+    call trapz_integral(memory,dt,max_len,kernel(0:max_len,:,:), E(i-max_len:i,:,:),dim_basis,dim_other,dim_basis)
     E(i,:,:) = matmul(invK0,E(i-1,:,:)-dt*memory+dt*matmul(f_coeff,E(i-1,:,:)))
-=======
-     memory=-0.5*dt*matmul(kernel(0,:,:),E(i-1,:,:))
-     do j=1,min(i-2,len_mem)
-       memory=memory-dt*matmul(kernel(j,:,:),E(i-1-j,:,:))
-    end do
-    memory=memory-0.5*dt*matmul(kernel(min(i-1,len_mem),:,:),E(i-1-min(i-1,len_mem),:,:))
-    E(i,:,:) = E(i-1,:,:)+dt*memory+dt*matmul(f_coeff,E(i-1,:,:))
->>>>>>> 683737412166c6c702fdf69e03cf73177144935c
   end do
 
 
