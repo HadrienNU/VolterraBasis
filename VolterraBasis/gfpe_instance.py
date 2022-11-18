@@ -25,7 +25,21 @@ class Pos_gfpe(Pos_gle_base):
             E_force, E, dE = self.basis_vector(self.xva_list[i])
             self.xva_list[i].update({"dE": (["time", "dim_dE"], dE)})
 
-        self.set_zero_force()  # Unless non hermitian, this should be true, we can also compute mean force after if wanted
+        # self.set_zero_force()  # Unless non hermitian, this should be true, we can also compute mean force after if wanted
+
+    def compute_mean_force(self):
+        """
+        Computes the mean force from the trajectories.
+        """
+        if self.verbose:
+            print("Calculate mean force...")
+        avg_disp = np.zeros((self.N_basis_elt_force, self.dim_obs))
+        avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
+        for weight, xva in zip(self.weights, self.xva_list):
+            E = self.basis_vector(xva, compute_for="force")
+            avg_disp += np.matmul(E.T, xva[self.L_obs].data) / self.weightsum
+            avg_gram += np.matmul(E.T, E) / self.weightsum
+        self.force_coeff = np.matmul(np.linalg.inv(avg_gram), avg_disp)  # Force the symmetry  0.5 * (avg_disp - avg_disp.T)
 
     def basis_vector(self, xva, compute_for="corrs"):
         E = self.basis.basis(xva["x"].data)
@@ -88,14 +102,16 @@ class Pos_gfpe(Pos_gle_base):
         else:
             p0 = np.asarray(p0).reshape(self.dim_obs, -1)
         dt = self.xva_list[0].attrs["dt"]
-        gram_occ = self.bkbkcorrw[0, :, :] @ np.diag(1.0 / self.occupations())
+        gram_occ = np.diag(1.0 / self.occupations())  # self.bkbkcorrw[0, :, :] @
         # print(gram_occ, np.sum(np.linalg.inv(gram_occ), axis=0), np.sum(gram_occ, axis=0))
-        # p0 = gram_occ @ p0
+        # p0 = self.bkbkcorrw[0, :, :] @ p0  # @ np.diag(1.0 / self.occupations())
         # kernel = np.einsum("jn,ikj,kl->iln", np.linalg.inv(gram_occ), self.kernel, gram_occ)
-        kernel = np.einsum("nj,ikj, kl->inl", np.linalg.inv(gram_occ), self.kernel, gram_occ)
-        # kernel = np.einsum("ikj->ijk", self.kernel)
+        # force_coeff = np.einsum("nj,kj, kl->nl", np.linalg.inv(gram_occ), self.force_coeff, gram_occ)
+        # kernel = np.einsum("nj,ikj, kl->inl", np.linalg.inv(gram_occ), self.kernel, gram_occ)
+        force_coeff = np.einsum("kj->kj", self.force_coeff)
+        kernel = np.einsum("ikj->ijk", self.kernel)
         if method == "rect":
-            p = solve_ide_rect(kernel, p0, self.force_coeff, lenTraj, dt)  # TODO it might worth transpose all the code for the kernel
+            p = solve_ide_rect(kernel, p0, force_coeff, lenTraj, dt)  # TODO it might worth transpose all the code for the kernel
         elif method == "trapz":
-            p = solve_ide_trapz(kernel, p0, self.force_coeff, lenTraj, dt)
+            p = solve_ide_trapz(kernel, p0, force_coeff, lenTraj, dt)
         return np.arange(lenTraj) * dt, np.squeeze(p)
