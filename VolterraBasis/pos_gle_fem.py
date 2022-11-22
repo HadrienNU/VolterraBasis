@@ -8,6 +8,7 @@ from itertools import product
 from scipy.sparse import coo_matrix
 
 from .pos_gle_base import Pos_gle_base, _convert_input_array_for_evaluation
+from .fkernel import solve_ide_rect, solve_ide_trapz
 
 
 class ElementFinder:
@@ -84,7 +85,7 @@ class Pos_gle_fem_base(Pos_gle_base):
     Method "trapz" and "second_kind" are not implemented
     """
 
-    def __init__(self, xva_arg, basis: Basis, element_finder, saveall=False, prefix="", verbose=True, kT=2.494, trunc=1.0, **kwargs):
+    def __init__(self, xva_arg, basis: Basis, element_finder, saveall=False, prefix="", verbose=True, trunc=1.0, **kwargs):
         """
         Using Finite element basis functions.
 
@@ -110,7 +111,7 @@ class Pos_gle_fem_base(Pos_gle_base):
             Truncate all correlation functions and the memory kernel after this
             time value.
         """
-        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc)
+        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, trunc)
         self.element_finder = element_finder
         for xva in self.xva_list:
             if "elem" not in xva.data_vars:
@@ -131,33 +132,31 @@ class Pos_gle_fem_base(Pos_gle_base):
 
         raise NotImplementedError
 
-    def compute_gram(self):
+    def compute_gram(self, kT=1.0):
         if self.verbose:
             print("Calculate gram...")
-            print("Use kT:", self.kT)
         avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
         for weight, xva in zip(self.weights, self.xva_list):
             for k, grouped_xva in list(xva.groupby("elem")):
                 E, dofs = self.basis_vector(grouped_xva, elem=k, compute_for="force")  # To check xva[xva["elem"] == k]
                 avg_gram[dofs, dofs] += np.matmul(E.T, E) / self.weightsum  #
-        self.invgram = self.kT * np.linalg.pinv(avg_gram)
+        self.invgram = kT * np.linalg.pinv(avg_gram)
 
         if self.verbose:
             print("Found inverse gram:", self.invgram)
-        return self.kT * avg_gram
+        return kT * avg_gram
 
-    def compute_effective_masse(self):
+    def compute_effective_masse(self, kT=1.0):
         """
         Return effective mass matrix computed from equipartition with the velocity.
         """
         if self.verbose:
             print("Calculate effective mass...")
-            print("Use kT:", self.kT)
         v2sum = 0.0
         for xva in self.xva_list:
             v2sum += np.einsum("ik,ij->kj", xva["v"], xva["v"])
         v2 = v2sum / self.weightsum
-        self.mass = self.kT * np.linalg.inv(v2)
+        self.mass = kT * np.linalg.inv(v2)
 
         if self.verbose:
             print("Found effective mass:", self.mass)
@@ -394,7 +393,7 @@ class Pos_gle_fem(Pos_gle_fem_base):
     holding all data and the extracted memory kernels.
     """
 
-    def __init__(self, xva_arg, basis: Basis, element_finder, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
+    def __init__(self, xva_arg, basis: Basis, element_finder, saveall=True, prefix="", verbose=True, trunc=1.0):
         """
         Create an instance of the Pos_gle class.
 
@@ -414,13 +413,11 @@ class Pos_gle_fem(Pos_gle_fem_base):
             Prefix for the saved output functions.
         verbose : bool, default=True
             Set verbosity.
-        kT : float, default=2.494
-            Numerical value for kT.
         trunc : float, default=1.0
             Truncate all correlation functions and the memory kernel after this
             time value.
         """
-        Pos_gle_fem_base.__init__(self, xva_arg, basis, element_finder, saveall, prefix, verbose, kT, trunc)
+        Pos_gle_fem_base.__init__(self, xva_arg, basis, element_finder, saveall, prefix, verbose, trunc)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt
         self.rank_projection = True
@@ -455,7 +452,7 @@ class Pos_gle_fem_equilibrium(Pos_gle_fem_base):
     Class for computation of equilibrium systems.
     """
 
-    def __init__(self, xva_arg, basis: Basis, element_finder, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
+    def __init__(self, xva_arg, basis: Basis, element_finder, saveall=True, prefix="", verbose=True, trunc=1.0):
         """
         Create an instance of the Pos_gle_fem_equilibrium class.
 
@@ -475,13 +472,11 @@ class Pos_gle_fem_equilibrium(Pos_gle_fem_base):
             Prefix for the saved output functions.
         verbose : bool, default=True
             Set verbosity.
-        kT : float, default=2.494
-            Numerical value for kT.
         trunc : float, default=1.0
             Truncate all correlation functions and the memory kernel after this
             time value.
         """
-        Pos_gle_fem_base.__init__(self, xva_arg, basis, element_finder, saveall, prefix, verbose, kT, trunc)
+        Pos_gle_fem_base.__init__(self, xva_arg, basis, element_finder, saveall, prefix, verbose, trunc)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt
         self.rank_projection = True
@@ -526,7 +521,7 @@ class Pos_gle_fem_app_kernel(Pos_gle_fem_base):
     Can be used as an approximation of the real kernel when dimension of bases is too high
     """
 
-    def __init__(self, xva_arg, basis: Basis, element_finder, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0):
+    def __init__(self, xva_arg, basis: Basis, element_finder, saveall=True, prefix="", verbose=True, trunc=1.0):
         """
         Create an instance of the Pos_gle class.
 
@@ -546,13 +541,11 @@ class Pos_gle_fem_app_kernel(Pos_gle_fem_base):
             Prefix for the saved output functions.
         verbose : bool, default=True
             Set verbosity.
-        kT : float, default=2.494
-            Numerical value for kT.
         trunc : float, default=1.0
             Truncate all correlation functions and the memory kernel after this
             time value.
         """
-        Pos_gle_fem_base.__init__(self, xva_arg, basis, element_finder, saveall, prefix, verbose, kT, trunc)
+        Pos_gle_fem_base.__init__(self, xva_arg, basis, element_finder, saveall, prefix, verbose, trunc)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt
         self.rank_projection = True
@@ -580,3 +573,106 @@ class Pos_gle_fem_app_kernel(Pos_gle_fem_base):
             return bk, E, None, dofs
         else:
             raise ValueError("Basis evaluation goal not specified")
+
+
+#
+# class Pos_fem_gfpe(Pos_gle_fem_base):
+#     """
+#     Linear projection of the basis on the basis. The resulting Volterra equation is a generalized Fokker Planck equation
+#     """
+#
+#     def __init__(self, xva_arg, basis: Basis, element_finder, saveall=True, prefix="", verbose=True, trunc=1.0, **kwargs):
+#         Pos_gle_fem_base.__init__(self, xva_arg, basis, element_finder, saveall, prefix, verbose, trunc, L_obs="v", **kwargs)
+#         self.N_basis_elt_force = self.N_basis_elt
+#         self.N_basis_elt_kernel = self.N_basis_elt
+#         if self.basis.const_removed:
+#             self.basis.const_removed = False
+#             print("Warning: remove_const on basis function have been set to False.")
+#         self.rank_projection = False
+#         self.dim_obs = self.N_basis_elt
+#         self.L_obs = "dE"
+#         self.inv_occ = np.diag(1 / self.occupations())
+#         for xva in self.xva_list:
+#             for k, grouped_xva in list(xva.groupby("elem")):
+#                 _, _, dE, _ = self.basis_vector(grouped_xva, elem=k)
+#                 grouped_xva.update({"dE": (["time", "dim_dE"], dE)})  # Il faut reshape le dE et je ne suis pas sur que ça marche, puisque groupedxva est une view
+#
+#     def basis_vector(self, xva, compute_for="corrs"):
+#         E = self.basis.basis(xva["x"].data)
+#         if compute_for == "force":
+#             return E
+#         elif compute_for == "pmf":
+#             return self.basis.antiderivative(xva["x"].data)
+#         elif compute_for == "kernel":
+#             return E.reshape(-1, self.N_basis_elt_kernel, self.dim_x)
+#         elif compute_for == "corrs":
+#             dbk = self.basis.deriv(xva["x"].data)
+#             dE = np.einsum("nld,nd->nl", dbk, xva["v"].data)
+#             return E, E, dE
+#         else:
+#             raise ValueError("Basis evaluation goal not specified")
+#
+#     def basis_vector(self, xva, elem, compute_for="corrs"):
+#         """
+#         From one trajectory compute the basis element.
+#         """
+#         nb_points = xva.dims["time"]
+#         bk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x))  # Check dimension should we add self.dim_x?
+#         dbk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x, self.dim_x))  # Check dimension
+#         dofs = np.zeros(self.basis.Nbfun, dtype=int)
+#         loc_value_t = self.basis.mapping.invF(xva["x"].data.T.reshape(self.dim_x, 1, -1), tind=slice(elem, elem + 1))  # Reshape into dim * 1 element * nb of point
+#         for i in range(self.basis.Nbfun):
+#             phi_field = self.basis.elem.gbasis(self.basis.mapping, loc_value_t[:, 0, :], i, tind=slice(elem, elem + 1))
+#             bk[:, i, :] = phi_field[0].value.T.reshape(-1, self.dim_x)  # The middle indice is the choice of element, ie only one choice here
+#             dbk[:, i, :, :] = phi_field[0].grad.T.reshape(-1, self.dim_x, self.dim_x)  # dbk via div? # TODO CHECK the transpose
+#             dofs[i] = self.basis.element_dofs[i, elem]
+#         if compute_for == "force":
+#             return bk, dofs
+#         if compute_for == "kernel":  # For kernel evaluation
+#             return bk, dofs
+#         elif compute_for == "corrs":
+#             dE = np.einsum("nlfd,nd->nlf", dbk, xva["v"].data)
+#             return bk, bk, dE, dofs
+#         else:
+#             raise ValueError("Basis evaluation goal not specified")
+#
+#     def occupations(self):
+#         """
+#         Compute mean value of the basis function
+#         """
+#         occ = 0.0
+#         weightsum = 0.0
+#         for xva in self.xva_list:
+#             E = self.basis.basis(xva["x"].data)
+#             occ += E.sum(axis=0)
+#             weightsum += E.shape[0]
+#         return occ / weightsum
+#
+#     def solve_gfpe(self, lenTraj, method="trapz", p0=None, absorbing_states=None):
+#         """
+#         Solve the integro-differential equation
+#         """
+#         if self.kernel is None:
+#             raise Exception("Kernel has not been computed.")
+#         if p0 is None:
+#             p0 = np.identity(self.dim_obs)  # self.bkbkcorrw[0, :, :]
+#         else:
+#             p0 = np.asarray(p0).reshape(self.dim_obs, -1)
+#
+#         p0 = self.bkbkcorrw[0, :, :] @ self.inv_occ @ p0
+#         dt = self.xva_list[0].attrs["dt"]
+#         force_coeff = np.einsum("kj->jk", self.force_coeff)
+#         kernel = np.einsum("ikj->ijk", self.kernel)
+#
+#         if not (absorbing_states is None):
+#             if type(absorbing_states) in [int, np.int, np.int64]:
+#                 list_state = [absorbing_states]
+#             for i in list_state:
+#                 force_coeff[:, :, i] = 0.0
+#                 kernel[:, :, i] = 0.0
+#
+#         if method == "rect":
+#             p = solve_ide_rect(kernel, p0, force_coeff, lenTraj, dt)  # TODO it might worth transpose all the code for the kernel
+#         elif method == "trapz":
+#             p = solve_ide_trapz(kernel, p0, force_coeff, lenTraj, dt)
+#         return np.arange(lenTraj) * dt, np.squeeze(p)

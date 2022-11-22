@@ -26,16 +26,17 @@ for i in range(1, trj.shape[1]):
     xva_list.append(xva_under)
 # print(xva_under.head())
 basis_x = bf.SmoothIndicatorFeatures([[1.4, 1.5]], "quartic")
-basis_v = bf.SmoothIndicatorFeatures([[-1.1, -1.0], [1.0, 1.1]], "tricube", periodic=True)
+basis_v = bf.SmoothIndicatorFeatures([[-1.1, -1.0], [1.0, 1.1]], "tricube", periodic=False)
 basis_comb = bf.TensorialBasis2D(basis_x, basis_v)
-mymem = vb.Pos_gfpe(xva_list, basis_comb, trunc=10, saveall=False)
-print("Dimension of observable", mymem.dim_x)
-print(mymem.N_basis_elt, mymem.N_basis_elt_force, mymem.N_basis_elt_kernel)
-# print(mymem.basis.b1.n_output_features_, mymem.basis.b2.n_output_features_)
+mymem = vb.Pos_gfpe(xva_list, basis_comb, trunc=0.01, saveall=False)
+print("Dimension of observable", mymem.dim_obs)
+mymem.compute_mean_force()
+
+print(mymem.force_coeff)
+
 mymem.compute_corrs()
-mymem.compute_kernel(method="trapz")
+mymem.compute_kernel(method="rect")
 print(mymem.time.shape, mymem.kernel.shape)
-# To find a correct parametrization of the space
 
 
 fig_kernel, axs = plt.subplots(1, 1)
@@ -45,23 +46,23 @@ axs.set_title("Memory kernel")
 axs.set_xlabel("$t$")
 axs.set_ylabel("$\\Gamma$")
 axs.grid()
-axs.plot(mymem.time, mymem.kernel[:, basis_comb.comb_indices(0, 0), basis_comb.comb_indices(0, 0)], "-x")
-axs.plot(mymem.time, mymem.kernel[:, basis_comb.comb_indices(1, 0), basis_comb.comb_indices(0, 0)], "-x")
-axs.plot(mymem.time, mymem.kernel[:, basis_comb.comb_indices(0, 0), basis_comb.comb_indices(1, 0)], "-x")
-axs.plot(mymem.time, mymem.kernel[:, basis_comb.comb_indices(1, 0), basis_comb.comb_indices(1, 0)], "-x")
+axs.plot(mymem.time, mymem.kernel[:, basis_comb.comb_indices(0, 0), :], "-x")
+# axs.plot(mymem.time, mymem.kernel[:, basis_comb.comb_indices(0, 0), basis_comb.comb_indices(0, 0)], "-x")
+# axs.plot(mymem.time, mymem.kernel[:, basis_comb.comb_indices(1, 0), basis_comb.comb_indices(0, 0)], "-x")
+# axs.plot(mymem.time, mymem.kernel[:, basis_comb.comb_indices(0, 0), basis_comb.comb_indices(1, 0)], "-x")
+# axs.plot(mymem.time, mymem.kernel[:, basis_comb.comb_indices(1, 0), basis_comb.comb_indices(1, 0)], "-x")
 
 
 # Survival problem
-sink_index = basis_comb.comb_indices(1, 1)
-mymem.set_absorbing_state(sink_index)
+# sink_index = basis_comb.comb_indices(1, 1)
 p0 = np.zeros(mymem.dim_obs)
 p0[basis_comb.comb_indices(0, 1)] = 1
 t_new, p_t = mymem.solve_gfpe(5000, method="trapz", p0=p0)
-p_t = p_t[:, :, 0]
 fig_pt = plt.figure("Probability of time")
 plt.grid()
-plt.plot(t_new, p_t[:, :], "-")
+plt.plot(t_new, p_t, "-")
 
+plt.plot(t_new, np.sum(p_t, axis=1), "-o")
 
 fig, ax_anim = plt.subplots()
 ax_anim.grid()
@@ -87,18 +88,18 @@ def update(frame):
 
 
 ani = animation.FuncAnimation(fig, update, frames=np.arange(p_t.shape[0]), blit=True, interval=10)
-
-
-fig_basis, axis_basis = plt.subplots(2, 1)
-
-Ex_basis = basis_x.basis(xrange.reshape(-1, 1))
-print(Ex_basis.shape)
-
-axis_basis[0].plot(xrange, Ex_basis)
-
-Ev_basis = basis_v.basis(yrange.reshape(-1, 1))
-print(Ev_basis.shape)
-
-axis_basis[1].plot(yrange, Ev_basis)
+#
+#
+# fig_basis, axis_basis = plt.subplots(2, 1)
+#
+# Ex_basis = basis_x.basis(xrange.reshape(-1, 1))
+# print(Ex_basis.shape)
+#
+# axis_basis[0].plot(xrange, Ex_basis)
+#
+# Ev_basis = basis_v.basis(yrange.reshape(-1, 1))
+# print(Ev_basis.shape)
+#
+# axis_basis[1].plot(yrange, Ev_basis)
 
 plt.show()

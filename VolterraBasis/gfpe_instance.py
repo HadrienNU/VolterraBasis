@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.integrate import simpson
 
 from .pos_gle_base import Pos_gle_base
 from .fkernel import solve_ide_rect, solve_ide_trapz
@@ -20,26 +19,10 @@ class Pos_gfpe(Pos_gle_base):
         self.rank_projection = False
         self.dim_obs = self.N_basis_elt
         self.L_obs = "dE"
-
+        self.inv_occ = np.diag(1 / self.occupations())
         for i in range(len(self.xva_list)):
             E_force, E, dE = self.basis_vector(self.xva_list[i])
             self.xva_list[i].update({"dE": (["time", "dim_dE"], dE)})
-
-        # self.set_zero_force()  # Unless non hermitian, this should be true, we can also compute mean force after if wanted
-
-    def compute_mean_force(self):
-        """
-        Computes the mean force from the trajectories.
-        """
-        if self.verbose:
-            print("Calculate mean force...")
-        avg_disp = np.zeros((self.N_basis_elt_force, self.dim_obs))
-        avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
-        for weight, xva in zip(self.weights, self.xva_list):
-            E = self.basis_vector(xva, compute_for="force")
-            avg_disp += np.matmul(E.T, xva[self.L_obs].data) / self.weightsum
-            avg_gram += np.matmul(E.T, E) / self.weightsum
-        self.force_coeff = np.matmul(np.linalg.inv(avg_gram), avg_disp)  # Force the symmetry  0.5 * (avg_disp - avg_disp.T)
 
     def basis_vector(self, xva, compute_for="corrs"):
         E = self.basis.basis(xva["x"].data)
@@ -56,29 +39,6 @@ class Pos_gfpe(Pos_gle_base):
         else:
             raise ValueError("Basis evaluation goal not specified")
 
-    def set_absorbing_state(self, list_state):
-        """
-        Set to zero the appropriate element of the memory kernel
-        """
-        if self.kernel is None:
-            raise Exception("Kernel has not been computed.")
-        if type(list_state) in [int, np.int, np.int64]:
-            list_state = [list_state]
-        for i in list_state:
-            self.kernel[:, i, :] = 0.0
-
-    def laplace_transform_kernel(self, n_points):
-        """
-        Compute the Laplace transform of the kernel matrix
-        """
-        dt = self.xva_list[0].attrs["dt"]
-        mintimelenght = np.min(self.weights) * dt
-        s_range = np.linspace(1 / mintimelenght, 1 / dt, n_points)
-        laplace = np.zeros((n_points, self.kernel.shape[1], self.kernel.shape[2]))
-        for n, s in enumerate(s_range):
-            laplace[n, :, :] = simpson(np.exp(-s * self.time) * self.kernel, self.time, axis=0)
-        return s_range, laplace
-
     def occupations(self):
         """
         Compute mean value of the basis function
@@ -91,27 +51,45 @@ class Pos_gfpe(Pos_gle_base):
             weightsum += E.shape[0]
         return occ / weightsum
 
-    def solve_gfpe(self, lenTraj, method="trapz", p0=None):
+    def solve_gfpe(self, lenTraj, method="trapz", p0=None, absorbing_states=None, trunc_ind=None):
         """
         Solve the integro-differential equation
         """
         if self.kernel is None:
             raise Exception("Kernel has not been computed.")
         if p0 is None:
-            p0 = self.bkbkcorrw[0, :, :]
+            p0 = np.identity(self.dim_obs)
         else:
             p0 = np.asarray(p0).reshape(self.dim_obs, -1)
+        if trunc_ind is None or trunc_ind <= 0:
+            trunc_ind = self.trunc_ind
+
+        p0 = self.bkbkcorrw[0, :, :] @ self.inv_occ @ p0
         dt = self.xva_list[0].attrs["dt"]
-        gram_occ = np.diag(1.0 / self.occupations())  # self.bkbkcorrw[0, :, :] @
-        # print(gram_occ, np.sum(np.linalg.inv(gram_occ), axis=0), np.sum(gram_occ, axis=0))
-        # p0 = self.bkbkcorrw[0, :, :] @ p0  # @ np.diag(1.0 / self.occupations())
-        # kernel = np.einsum("jn,ikj,kl->iln", np.linalg.inv(gram_occ), self.kernel, gram_occ)
-        # force_coeff = np.einsum("nj,kj, kl->nl", np.linalg.inv(gram_occ), self.force_coeff, gram_occ)
-        # kernel = np.einsum("nj,ikj, kl->inl", np.linalg.inv(gram_occ), self.kernel, gram_occ)
-        force_coeff = np.einsum("kj->kj", self.force_coeff)
-        kernel = np.einsum("ikj->ijk", self.kernel)
+        force_coeff = np.einsum("kj->jk", self.force_coeff)
+        kernel = np.einsum("ikj->ijk", self.kernel[:trunc_ind, :, :])
+
+        if not (absorbing_states is None):
+            if type(absorbing_states) in [int, np.int, np.int64]:
+                list_state = [absorbing_states]
+            for i in list_state:  # C'est probablement pas comme ça qu'il faut faire, mais au moins annuler la green function plutôt que <E,E>
+                force_coeff[i, :] = 0.0
+                kernel[:, i, :] = 0.0
         if method == "rect":
             p = solve_ide_rect(kernel, p0, force_coeff, lenTraj, dt)  # TODO it might worth transpose all the code for the kernel
         elif method == "trapz":
             p = solve_ide_trapz(kernel, p0, force_coeff, lenTraj, dt)
         return np.arange(lenTraj) * dt, np.squeeze(p)
+
+    def study_stability(self):
+        s_range, laplace = self.laplace_transform_kernel()
+        force_coeff = np.einsum("kj->jk", self.force_coeff)
+        lapace_ker = np.einsum("ikj->ijk", laplace)
+        det_laplace = np.zeros_like(s_range)
+        eig_vals = np.zeros((len(s_range), self.dim_obs))
+        id = np.identity(self.dim_obs)
+        for i, s in enumerate(s_range):
+            resol_mat = s * id - force_coeff + lapace_ker[i, :, :]
+            det_laplace[i] = np.linalg.det(resol_mat)
+            eig_vals[i, :] = np.linalg.eigvals(resol_mat)
+        return s_range, det_laplace, eig_vals

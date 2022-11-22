@@ -1,6 +1,6 @@
 import numpy as np
 import xarray as xr
-from scipy.integrate import trapezoid
+from scipy.integrate import trapezoid, simpson
 
 from .fkernel import kernel_first_kind_trapz, kernel_first_kind_rect, kernel_first_kind_midpoint, kernel_second_kind_rect, kernel_second_kind_trapz
 from .fkernel import memory_rect, memory_trapz, corrs_rect, corrs_trapz
@@ -400,6 +400,22 @@ class Pos_gle_base(object):
             np.savetxt(self.prefix + self.kernelfile, np.hstack((self.time, self.kernel.reshape(self.kernel.shape[0], -1))))
 
         return self.kernel
+
+    def laplace_transform_kernel(self, n_points=None):
+        """
+        Compute the Laplace transform of the kernel matrix
+        """
+        if self.kernel is None:
+            raise Exception("Kernel has not been computed.")
+        if n_points is None:
+            n_points = self.trunc_ind
+        dt = self.xva_list[0].attrs["dt"]
+        # mintimelenght = self.trunc_ind * dt
+        s_range = np.linspace(0.0, 1.0 / dt, n_points)
+        laplace = np.zeros((n_points, self.kernel.shape[1], self.kernel.shape[2]))
+        for n, s in enumerate(s_range):
+            laplace[n, :, :] = simpson(np.einsum("i,ijk-> ijk", np.exp(-s * self.time[:, 0]), self.kernel), self.time[:, 0], axis=0)
+        return s_range, laplace
 
     def check_volterra_inversion(self):
         """
