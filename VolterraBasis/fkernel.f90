@@ -478,3 +478,38 @@ subroutine solve_ide_trapz(len_mem, dim_basis, dim_other, kernel, E0, f_coeff,le
 
 
 end subroutine solve_ide_trapz
+
+
+subroutine solve_ide_trapz_stab(len_mem, dim_basis, dim_other, kernel, E0, f_coeff,lenTraj, dt, E)
+  use lapackMod
+  implicit none
+  integer,intent(in)::lenTraj,len_mem,dim_basis,dim_other
+  double precision,dimension(0:len_mem, dim_basis, dim_basis),intent(in)::kernel
+  double precision,dimension(dim_basis, dim_basis),intent(in)::f_coeff
+  double precision,dimension(dim_basis,dim_other),intent(in)::E0
+  double precision,dimension(0:lenTraj-1, dim_basis,dim_other),intent(out)::E
+  double precision,intent(in)::dt
+  double precision,dimension(dim_basis,dim_other)::memory
+  double precision,dimension(dim_basis,dim_basis)::invK0,id
+  integer::i,max_len
+
+  E(0,:,:)=E0
+  id=0
+  do i=1,dim_basis
+    id(i,i)=1.0
+  end do
+
+  invK0 = inv(id+0.5*dt**2*kernel(0,:,:))
+
+  do i=1,lenTraj-1
+    max_len = min(i,len_mem)
+    call trapz_integral(memory,dt,max_len,kernel(0:max_len,:,:), E(i-max_len:i,:,:),dim_basis,dim_other,dim_basis)
+    E(i,:,:) = matmul(invK0,E(i-1,:,:)-dt*memory+dt*matmul(f_coeff,E(i-1,:,:)))
+    ! projection onto the unit simplex for stabilisation, start with simple normalization
+    E(i,:,:) = max(E(i,:,:),0.)
+    E(i,:,:) = E(i,:,:) / sum(E(i,:,:))
+  end do
+
+
+
+end subroutine solve_ide_trapz_stab

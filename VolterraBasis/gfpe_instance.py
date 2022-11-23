@@ -1,7 +1,7 @@
 import numpy as np
 
 from .pos_gle_base import Pos_gle_base
-from .fkernel import solve_ide_rect, solve_ide_trapz
+from .fkernel import solve_ide_rect, solve_ide_trapz, solve_ide_trapz_stab
 
 
 class Pos_gfpe(Pos_gle_base):
@@ -65,7 +65,6 @@ class Pos_gfpe(Pos_gle_base):
             trunc_ind = self.trunc_ind
 
         p0 = self.bkbkcorrw[0, :, :] @ self.inv_occ @ p0
-        dt = self.xva_list[0].attrs["dt"]
         force_coeff = np.einsum("kj->jk", self.force_coeff)
         kernel = np.einsum("ikj->ijk", self.kernel[:trunc_ind, :, :])
 
@@ -76,10 +75,27 @@ class Pos_gfpe(Pos_gle_base):
                 force_coeff[i, :] = 0.0
                 kernel[:, i, :] = 0.0
         if method == "rect":
-            p = solve_ide_rect(kernel, p0, force_coeff, lenTraj, dt)  # TODO it might worth transpose all the code for the kernel
+            p = solve_ide_rect(kernel, p0, force_coeff, lenTraj, self.dt)  # TODO it might worth transpose all the code for the kernel
         elif method == "trapz":
-            p = solve_ide_trapz(kernel, p0, force_coeff, lenTraj, dt)
-        return np.arange(lenTraj) * dt, np.squeeze(p)
+            p = solve_ide_trapz(kernel, p0, force_coeff, lenTraj, self.dt)
+        elif method == "trapz_stab":
+            p = solve_ide_trapz_stab(kernel, p0, force_coeff, lenTraj, self.dt)
+        return np.arange(lenTraj) * self.dt, np.squeeze(p)
+
+    def compute_flux(self, p_t, trunc_ind=None):
+        """
+        Compute the flux for evolution of the probability
+        """
+        if trunc_ind is None or trunc_ind <= 0:
+            trunc_ind = self.trunc_ind
+        force_coeff = np.einsum("kj->jk", self.force_coeff)
+        kernel = np.einsum("ikj->ijk", self.kernel[:trunc_ind, :, :])
+        flux = np.zeros(p_t.shape[0:] + p_t.shape[1:])
+        for n in range(p_t.shape[0]):
+            m = min(n, kernel.shape[0])
+            to_integrate = np.einsum("ikj,ij...->ikj...", kernel[:m, :, :], p_t[n - m : n, ...][::-1, ...])
+            flux[n, ...] = np.trapz(to_integrate, dx=self.dt, axis=0) + np.einsum("kj,j...->kj...", force_coeff, p_t[n, ...])  # vb.fkernel.memory_trapz(kernel, p_t[:n, :], dt)[-1, :]
+        return flux
 
     def study_stability(self):
         s_range, laplace = self.laplace_transform_kernel()

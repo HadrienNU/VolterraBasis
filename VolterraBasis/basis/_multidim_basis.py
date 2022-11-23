@@ -37,12 +37,14 @@ class TensorialBasis2D(TransformerMixin):
     def deriv(self, X, deriv_order=1):
         if deriv_order == 2:
             return self.hessian(X)
+        elif deriv_order > 2:
+            raise NotImplementedError("Implement it yourself")
         nsamples, nfeatures = X.shape
         temp_arr_1 = np.einsum("nk,nl...->nkl...", self.b1.basis(X[:, slice(0, 1)]), self.b2.deriv(X[:, slice(1, 2)], deriv_order=deriv_order))
         grad_1 = temp_arr_1.reshape(nsamples, -1, *temp_arr_1.shape[3:])
         temp_arr_2 = np.einsum("nk...,nl->nkl...", self.b1.deriv(X[:, slice(0, 1)], deriv_order=deriv_order), self.b2.basis(X[:, slice(1, 2)]))
         grad_2 = temp_arr_2.reshape(nsamples, -1, *temp_arr_2.shape[3:])
-        return np.concatenate((grad_1, grad_2), axis=-1)  # Il faudrait concatenate le long de la diagonal
+        return np.concatenate((grad_2, grad_1), axis=-1)
 
     def hessian(self, X):
         nsamples, nfeatures = X.shape
@@ -53,7 +55,7 @@ class TensorialBasis2D(TransformerMixin):
         temp_arr_2 = np.einsum("nk...,nl->nkl...", self.b1.hessian(X[:, slice(0, 1)]), self.b2.basis(X[:, slice(1, 2)]))
         hess_2 = temp_arr_2.reshape(nsamples, -1, *temp_arr_2.shape[3:])
         print(hess_1.shape, hess_cross.shape, hess_2.shape)
-        return np.concatenate((np.concatenate((hess_1, hess_cross), axis=-2), np.concatenate((hess_cross, hess_2), axis=-2)), axis=-1)  # Il faudrait concatenate le long de la diagonal
+        return np.concatenate((np.concatenate((hess_2, hess_cross), axis=-2), np.concatenate((hess_cross, hess_1), axis=-2)), axis=-1)
 
     def antiderivative(self, X, order=1):
         raise NotImplementedError("Don't try this")

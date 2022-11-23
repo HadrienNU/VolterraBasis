@@ -361,7 +361,7 @@ class Pos_gle_base(object):
         self.method = method  # Save used method
         if self.verbose:
             print("Use dt:", dt)
-
+        self.dt = dt
         if k0 is None and method in ["trapz", "second_kind_rect", "second_kind_trapz"]:  # Then we should compute initial value from time derivative at zero
             if self.dotbkdxcorrw is None:
                 raise Exception("Need correlation with derivative functions to compute the kernel using this method or provide initial value.")
@@ -409,7 +409,7 @@ class Pos_gle_base(object):
             raise Exception("Kernel has not been computed.")
         if n_points is None:
             n_points = self.trunc_ind
-        dt = self.xva_list[0].attrs["dt"]
+        dt = self.dt
         # mintimelenght = self.trunc_ind * dt
         s_range = np.linspace(0.0, 1.0 / dt, n_points)
         laplace = np.zeros((n_points, self.kernel.shape[1], self.kernel.shape[2]))
@@ -422,8 +422,10 @@ class Pos_gle_base(object):
         For checking if the volterra equation is correctly inversed
         Compute the integral in volterra equation using trapezoidal rule
         """
+        if self.kernel is None:
+            raise Exception("Kernel has not been computed.")
         time = self.xva_list[0]["time"].data[: self.trunc_ind]
-        dt = self.xva_list[0].attrs["dt"]
+        dt = self.dt
         res_int = np.zeros(self.bkdxcorrw.shape)
         # res_int[0, :] = 0.5 * dt * to_integrate[0, :]
         # if method == "trapz":

@@ -72,10 +72,14 @@ ax_anim.grid()
 time_text = ax_anim.text(0.85, 0.95, "0.0", horizontalalignment="left", verticalalignment="top", transform=ax_anim.transAxes)
 
 xrange = np.linspace(0.8, 3.0, 150)
-E_eval = mymem.basis_vector(vb.pos_gle_base._convert_input_array_for_evaluation(xrange, 1), compute_for="force")
-proba_val = E_eval @ p_t[0, :]
-dt = t_new[1] - t_new[0]
+E_eval_unnorm = mymem.basis_vector(vb.pos_gle_base._convert_input_array_for_evaluation(xrange, 1), compute_for="force")
+norm_E = np.trapz(E_eval_unnorm, x=xrange, axis=0)
+E_eval = E_eval_unnorm @ np.diag(norm_E)
 
+
+proba_val = E_eval @ np.max(p_t[:, :], axis=0)
+dt = t_new[1] - t_new[0]
+print(E_eval.shape, norm_E)
 (ln,) = ax_anim.plot(xrange, proba_val, "-")
 
 
