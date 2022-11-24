@@ -94,7 +94,7 @@ class Pos_gfpe(Pos_gle_base):
         for n in range(p_t.shape[0]):
             m = min(n, kernel.shape[0])
             to_integrate = np.einsum("ikj,ij...->ikj...", kernel[:m, :, :], p_t[n - m : n, ...][::-1, ...])
-            flux[n, ...] = np.trapz(to_integrate, dx=self.dt, axis=0) + np.einsum("kj,j...->kj...", force_coeff, p_t[n, ...])  # vb.fkernel.memory_trapz(kernel, p_t[:n, :], dt)[-1, :]
+            flux[n, ...] = -1 * np.trapz(to_integrate, dx=self.dt, axis=0) + np.einsum("kj,j...->kj...", force_coeff, p_t[n, ...])  # vb.fkernel.memory_trapz(kernel, p_t[:n, :], dt)[-1, :]
         return flux
 
     def study_stability(self):
