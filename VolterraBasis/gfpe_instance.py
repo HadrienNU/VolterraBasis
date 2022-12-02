@@ -271,9 +271,6 @@ class Pos_gfpe_fem(Pos_gfpe):
         self.bkbkcorrw /= self.weightsum
         self.bkdxcorrw /= self.weightsum
 
-        if self.rank_projection:
-            self._set_range_projection(rank_tol)
-
         if self.saveall:
             np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(self.trunc_ind, -1))
             np.savetxt(self.prefix + self.corrsfile, self.bkbkcorrw.reshape(self.trunc_ind, -1))

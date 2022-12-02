@@ -69,7 +69,46 @@ def centroid_driven_line(data, bins=100):
     return mesh
 
 
-def centroid_driven_mesh(data, bins=100, boundary_vertices=None):
+def get_intersect(a1, a2, b1, b2):
+    """
+    Returns the point of intersection of the lines passing through a2,a1 and b2,b1.
+    a1: [x, y] a point on the first line
+    a2: [x, y] another point on the first line
+    b1: [x, y] a point on the second line
+    b2: [x, y] another point on the second line
+    """
+    s = np.vstack([a1, a2, b1, b2])  # s for stacked
+    h = np.hstack((s, np.ones((4, 1))))  # h for homogeneous
+    l1 = np.cross(h[0], h[1])  # get first line
+    l2 = np.cross(h[2], h[3])  # get second line
+    x, y, z = np.cross(l1, l2)  # point of intersection
+    if z == 0:  # lines are parallel
+        return (float("inf"), float("inf"))
+    return (x / z, y / z)
+
+
+def remove_one_point(boundary_vertices, ratio_limit=0.01):
+    """
+    Remove one points from the smallest
+    """
+    length = np.power(boundary_vertices[1:] - boundary_vertices[:-1], 2).sum(axis=1)
+    min_arete = np.argmin(length)
+    ratio = length[min_arete] / np.sum(length)
+    print(ratio)
+    if ratio < ratio_limit:
+        pre_a = boundary_vertices[(min_arete - 1) % len(boundary_vertices)]
+        pre_b = boundary_vertices[(min_arete) % len(boundary_vertices)]
+
+        post_a = boundary_vertices[(min_arete + 1) % len(boundary_vertices)]
+        post_b = boundary_vertices[(min_arete + 2) % len(boundary_vertices)]
+
+        boundary_vertices[min_arete, :] = get_intersect(pre_a, pre_b, post_a, post_b)
+        return np.delete(boundary_vertices, (min_arete + 1) % len(boundary_vertices), axis=0), True
+    else:
+        return boundary_vertices, False
+
+
+def centroid_driven_mesh(data, bins=100, boundary_vertices=None, simplify_hull=0.01):
     """
     Creates a mesh line based on centroids of the data, to get more cell around point with more datas
 
@@ -83,6 +122,9 @@ def centroid_driven_mesh(data, bins=100, boundary_vertices=None):
     if boundary_vertices is None:
         hull = ConvexHull(data)
         boundary_vertices = data[hull.vertices]
+        stop = simplify_hull > 0.0
+        while stop:
+            boundary_vertices, stop = remove_one_point(boundary_vertices)
     vertices = np.concatenate((boundary_vertices, kmeans.cluster_centers_))
     # For ND, do Delaunay triangulation of the space
     tri = Delaunay(vertices)
