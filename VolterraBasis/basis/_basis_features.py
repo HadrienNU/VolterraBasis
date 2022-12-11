@@ -5,6 +5,7 @@ import numpy as np
 
 import scipy.interpolate
 import scipy.stats
+from ._data_describe import quick_describe, minimal_describe
 
 from sklearn.base import TransformerMixin
 
@@ -19,10 +20,12 @@ class LinearFeatures(TransformerMixin):
         self.centered = to_center
         self.const_removed = False
 
-    def fit(self, X, y=None):
-        self.n_output_features_ = X.shape[1]
+    def fit(self, describe_result):
+        if isinstance(describe_result, np.ndarray):
+            describe_result = minimal_describe(describe_result)
+        self.n_output_features_ = describe_result.mean.shape[0]
         if self.centered:
-            self.mean_ = np.mean(X, axis=0)
+            self.mean_ = describe_result.mean
         else:
             self.mean_ = np.zeros((self.n_output_features_,))
         return self
@@ -58,8 +61,10 @@ class PolynomialFeatures(TransformerMixin):
         self.polynom = polynom
         self.const_removed = remove_const
 
-    def fit(self, X, y=None):
-        self.n_output_features_ = X.shape[1] * self.degree
+    def fit(self, describe_result):
+        if isinstance(describe_result, np.ndarray):
+            describe_result = quick_describe(describe_result)
+        self.n_output_features_ = describe_result.mean.shape[0] * self.degree
         return self
 
     def basis(self, X):
@@ -112,8 +117,10 @@ class FourierFeatures(TransformerMixin):
         self.freq = freq
         self.const_removed = remove_const
 
-    def fit(self, X, y=None):
-        self.n_output_features_ = X.shape[1] * self.order
+    def fit(self, describe_result):
+        if isinstance(describe_result, np.ndarray):
+            describe_result = quick_describe(describe_result)
+        self.n_output_features_ = describe_result.mean.shape[0] * self.order
         return self
 
     def basis(self, X):
@@ -191,10 +198,11 @@ class SplineFctFeatures(TransformerMixin):
         self.c = coeffs
         self.const_removed = False
 
-    def fit(self, X, y=None):
-        nsamples, dim = X.shape
+    def fit(self, describe_result):
+        if isinstance(describe_result, np.ndarray):
+            describe_result = quick_describe(describe_result)
         self.spl_ = scipy.interpolate.BSpline(self.t, self.c, self.k)
-        self.n_output_features_ = dim
+        self.n_output_features_ = describe_result.mean.shape[0]
         return self
 
     def basis(self, X):
@@ -223,9 +231,11 @@ class FeaturesCombiner(TransformerMixin):
         self.basis_set = basis
         self.const_removed = np.any([b.const_removed for b in self.basis_set])  # Check if one of the basis set have the constant removed
 
-    def fit(self, X, y=None):
+    def fit(self, describe_result):
+        if isinstance(describe_result, np.ndarray):
+            describe_result = scipy.stats.describe(describe_result)
         for b in self.basis_set:
-            b.fit(X)
+            b.fit(describe_result)
         self.n_output_features_ = np.sum([b.n_output_features_ for b in self.basis_set])
         return self
 
@@ -285,13 +295,14 @@ class FeaturesCombiner(TransformerMixin):
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+    from scipy.stats import describe
 
     x_range = np.linspace(-10, 10, 30).reshape(-1, 2)
     # b2 = LinearFeatures()
     basis = FourierFeatures(order=3, freq=1.0)
     # b1 = SplineFctFeatures(knots=np.linspace(-1, 1, 8), coeffs=np.logspace(1, 2, 8), k=2)
     # basis = FeaturesCombiner(b1, b2)
-    basis.fit(x_range)
+    basis.fit(describe(x_range))
     print(x_range.shape)
     print("Basis")
     print(basis.basis(x_range).shape)

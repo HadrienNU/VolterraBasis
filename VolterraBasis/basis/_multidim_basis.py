@@ -2,8 +2,9 @@
 This the main estimator module
 """
 import numpy as np
-
+import scipy.stats
 from sklearn.base import TransformerMixin
+from ._data_describe import DescribeResult
 
 
 class TensorialBasis2D(TransformerMixin):
@@ -23,9 +24,15 @@ class TensorialBasis2D(TransformerMixin):
         self.b2.const_removed = False
         self.const_removed = False
 
-    def fit(self, X, y=None):
-        self.b1.fit(X[:, slice(0, 1)])
-        self.b2.fit(X[:, slice(1, 2)])
+    def fit(self, describe_result):
+        if isinstance(describe_result, np.ndarray):
+            describe_result = scipy.stats.describe(describe_result)
+        dim = describe_result.mean.shape[0]
+        if dim != 2:
+            raise ValueError("This basis does not support dimension other than 2.")
+
+        self.b1.fit(DescribeResult(describe_result.nobs, (describe_result.minmax[0][0:1], describe_result.minmax[1][0:1]), describe_result.mean[0:1], describe_result.variance[0:1], describe_result.skewness[0:1], describe_result.kurtosis[0:1]))
+        self.b2.fit(DescribeResult(describe_result.nobs, (describe_result.minmax[0][1:2], describe_result.minmax[1][1:2]), describe_result.mean[1:2], describe_result.variance[1:2], describe_result.skewness[1:2], describe_result.kurtosis[1:2]))
         self.n_output_features_ = self.b1.n_output_features_ * self.b2.n_output_features_
         return self
 

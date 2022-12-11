@@ -3,7 +3,9 @@ This the main estimator module
 """
 import numpy as np
 import scipy.interpolate
+import scipy.stats
 from sklearn.base import TransformerMixin
+from ._data_describe import quick_describe, minimal_describe
 
 
 def _get_bspline_basis(knots, degree=3, periodic=False):
@@ -41,11 +43,13 @@ class BSplineFeatures(TransformerMixin):
         self.n_knots = n_knots  # knots are position along the axis of the knots
         self.const_removed = remove_const
 
-    def fit(self, X, y=None, knots=None):
-        nsamples, dim = X.shape
+    def fit(self, describe_result, knots=None):
+        if isinstance(describe_result, np.ndarray):
+            describe_result = minimal_describe(describe_result)
+        dim = describe_result.mean.shape[0]
         # TODO determine non uniform position of knots given the datas
         if knots is None:
-            knots = np.linspace(np.min(X), np.max(X), self.n_knots)
+            knots = np.linspace(describe_result.minmax[0], describe_result.minmax[1], self.n_knots)
         self.bsplines_ = _get_bspline_basis(knots, self.k, periodic=self.periodic)
         self._nsplines = len(self.bsplines_)
         self.n_output_features_ = len(self.bsplines_) * dim
@@ -160,8 +164,10 @@ class SmoothIndicatorFeatures(TransformerMixin):
         else:
             raise ValueError("Not valable boundary")
 
-    def fit(self, X, y=None, knots=None):
-        nsamples, dim = X.shape
+    def fit(self, describe_result):
+        if isinstance(describe_result, np.ndarray):
+            describe_result = quick_describe(describe_result)
+        dim = describe_result.mean.shape[0]
         if dim > 1:
             raise ValueError("This basis does not support dimension higher than 1. Try to combine it using TensorialBasis2D")
         self.n_output_features_ = len(self.states_boundary) + (not self.periodic)
