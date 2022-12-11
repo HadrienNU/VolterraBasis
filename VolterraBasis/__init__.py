@@ -11,7 +11,7 @@ from .memory_fit import memory_fit, memory_fit_eval, memory_fit_kernel, memory_k
 from .prony_fit import prony_inspect_data, prony_fit_times_serie, prony_fit_kernel, prony_series_eval, prony_series_kernel_eval
 from .correlation import correlation_ND as correlation
 from . import basis
-from .mesh import *
+from .mesh_utils import *
 
 __all__ = ["Pos_gle", "Pos_gle_with_friction", "Pos_gle_no_vel_basis", "Pos_gle_const_kernel", "Pos_gle_hybrid"]
 __all__ += ["Pos_gle_overdamped", "Pos_gle_overdamped_const_kernel"]

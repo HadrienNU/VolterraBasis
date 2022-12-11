@@ -1,7 +1,7 @@
 import numpy as np
+import xarray as xr
 
 from .pos_gle_base import Pos_gle_base, _convert_input_array_for_evaluation
-from .fkernel import solve_ide_rect, solve_ide_trapz
 
 
 class Pos_gle(Pos_gle_base):
@@ -42,21 +42,19 @@ class Pos_gle(Pos_gle_base):
         self.rank_projection = not self.basis.const_removed
 
     def basis_vector(self, xva, compute_for="corrs"):
-        # We have to deal with the multidimensionnal case as well
-        bk = self.basis.basis(xva["x"].data)
-        # if self.include_const:
-        #     bk = np.concatenate((np.ones((bk.shape[0], 1)), bk), axis=1)
+
+        bk = xr.apply_ufunc(self.basis.basis, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis"]], exclude_dims={"dim_x"}, dask="forbidden")
         if compute_for == "force":
             return bk
         elif compute_for == "pmf":
-            return self.basis.antiderivative(xva["x"].data)
-        dbk = self.basis.deriv(xva["x"].data)
+            return xr.apply_ufunc(self.basis.antiderivative, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis"]], exclude_dims={"dim_x"}, dask="forbidden")
+        dbk = xr.apply_ufunc(self.basis.deriv, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis", "dim_x"]], exclude_dims={"dim_x"}, dask="forbidden")
         if compute_for == "kernel":  # For kernel evaluation
             return dbk
         elif compute_for == "corrs":
-            ddbk = self.basis.hessian(xva["x"].data)
-            E = np.einsum("nld,nd->nl", dbk, xva["v"].data)
-            dE = np.einsum("nld,nd->nl", dbk, xva["a"].data) + np.einsum("nlcd,nc,nd->nl", ddbk, xva["v"].data, xva["v"].data)
+            ddbk = xr.apply_ufunc(self.basis.hessian, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis", "dim_x", "dim_x'"]], exclude_dims={"dim_x"}, dask="forbidden")
+            E = xr.dot(dbk, xva["v"], dims=["dim_x"])
+            dE = xr.dot(dbk, xva["a"], dims=["dim_x"]) + xr.dot(ddbk, xva["v"], xva["v"].rename({"dim_x": "dim_x'"}), dims=["dim_x", "dim_x'"])
             return bk, E, dE
         else:
             raise ValueError("Basis evaluation goal not specified")
@@ -75,22 +73,22 @@ class Pos_gle_with_friction(Pos_gle_base):
 
     def basis_vector(self, xva, compute_for="corrs"):
         # We have to deal with the multidimensionnal case as well
-        bk = self.basis.basis(xva["x"].data)
+        bk = xr.apply_ufunc(self.basis.basis, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis"]], exclude_dims={"dim_x"}, dask="forbidden")
         if compute_for == "force_eval":
             return bk
         elif compute_for == "pmf":
-            return self.basis.antiderivative(xva["x"].data)
-        dbk = self.basis.deriv(xva["x"].data)
+            return xr.apply_ufunc(self.basis.antiderivative, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis"]], exclude_dims={"dim_x"}, dask="forbidden")
+        dbk = xr.apply_ufunc(self.basis.deriv, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis", "dim_x"]], exclude_dims={"dim_x"}, dask="forbidden")
         if compute_for == "kernel":  # To have the term proportional to velocity
             return dbk
 
-        Evel = np.einsum("nld,nd->nl", dbk, xva["v"].data)
-        E = np.concatenate((bk, Evel), axis=1)
+        Evel = xr.dot(dbk, xva["v"], dims=["dim_x"])
+        E = xr.concat([bk, Evel], dim="dim_basis")
         if compute_for == "force":
             return E
         elif compute_for == "corrs":
-            ddbk = self.basis.hessian(xva["x"].data)
-            dE = np.einsum("nld,nd->nl", dbk, xva["a"].data) + np.einsum("nlcd,nc,nd->nl", ddbk, xva["v"].data, xva["v"].data)
+            ddbk = xr.apply_ufunc(self.basis.hessian, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis", "dim_x", "dim_x'"]], exclude_dims={"dim_x"}, dask="forbidden")
+            dE = xr.dot(dbk, xva["a"], dims=["dim_x"]) + xr.dot(ddbk, xva["v"], xva["v"].rename({"dim_x": "dim_x'"}), dims=["dim_x", "dim_x'"])
             return E, Evel, dE
         else:
             raise ValueError("Basis evaluation goal not specified")
@@ -128,18 +126,17 @@ class Pos_gle_no_vel_basis(Pos_gle_base):
             print("Warning: remove_const on basis function have been set to False.")
 
     def basis_vector(self, xva, compute_for="corrs"):
-        # We have to deal with the multidimensionnal case as well
-        E = self.basis.basis(xva["x"].data)
+        E = xr.apply_ufunc(self.basis.basis, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis"]], exclude_dims={"dim_x"}, dask="forbidden")
         if compute_for == "force":
             return E
         elif compute_for == "pmf":
-            return self.basis.antiderivative(xva["x"].data)
+            return xr.apply_ufunc(self.basis.antiderivative, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis"]], exclude_dims={"dim_x"}, dask="forbidden")
         elif compute_for == "kernel":
             # Extend the basis for multidim value
-            return E.reshape(-1, self.N_basis_elt_kernel, 1)
+            return E.reshape(-1, self.N_basis_elt_kernel, 1)  # TODO: change
         elif compute_for == "corrs":
-            dbk = self.basis.deriv(xva["x"].data)
-            dE = np.einsum("nld,nd->nl", dbk, xva["v"].data)
+            dbk = xr.apply_ufunc(self.basis.deriv, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis", "dim_x"]], exclude_dims={"dim_x"}, dask="forbidden")
+            dE = xr.dot(dbk, xva["v"], dims=["dim_x"])
             return E, E, dE
         else:
             raise ValueError("Basis evaluation goal not specified")
@@ -156,21 +153,18 @@ class Pos_gle_const_kernel(Pos_gle_base):
         self.N_basis_elt_kernel = self.dim_obs
 
     def basis_vector(self, xva, compute_for="corrs"):
-        # We have to deal with the multidimensionnal case as well
-        bk = self.basis.basis(xva["x"].data)
-        # if self.include_const:
-        #     bk = np.concatenate((np.ones((bk.shape[0], 1)), bk), axis=1)
+        bk = xr.apply_ufunc(self.basis.basis, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis"]], exclude_dims={"dim_x"}, dask="forbidden")
         if compute_for == "force":
             return bk
         elif compute_for == "pmf":
-            return self.basis.antiderivative(xva["x"].data)
+            return xr.apply_ufunc(self.basis.antiderivative, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis"]], exclude_dims={"dim_x"}, dask="forbidden")
         if compute_for == "kernel":  # For kernel evaluation
             grad = np.zeros((bk.shape[0], self.dim_obs, self.dim_obs))
             for i in range(self.dim_obs):
                 grad[:, i, i] = 1.0
-            return grad
+            return grad  # TODO: update to xarray
         elif compute_for == "corrs":
-            return bk, xva["v"].data, xva["a"].data
+            return bk, xva["v"], xva["a"]
         else:
             raise ValueError("Basis evaluation goal not specified")
 
@@ -213,18 +207,18 @@ class Pos_gle_hybrid(Pos_gle_base):
 
     def basis_vector(self, xva, compute_for="corrs"):
         # We have to deal with the multidimensionnal case as well
-        bk = self.basis.basis(xva["x"].data)
+        bk = xr.apply_ufunc(self.basis.basis, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis"]], exclude_dims={"dim_x"}, dask="forbidden")
         if compute_for == "force":
             return bk
         elif compute_for == "pmf":
-            return self.basis.antiderivative(xva["x"].data)
+            return xr.apply_ufunc(self.basis.antiderivative, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis"]], exclude_dims={"dim_x"}, dask="forbidden")
         elif compute_for == "kernel":
             # Extend the basis for multidim value
             return bk.reshape(-1, self.N_basis_elt_kernel - 1, 1)
         elif compute_for == "corrs":
-            E = np.concatenate((xva["v"].data, bk), axis=1)
-            dbk = np.einsum("nld,nd->nl", self.basis.deriv(xva["x"].data), xva["v"].data)
-            dE = np.concatenate((xva["a"].data, dbk), axis=1)
+            E = xr.concat([xva["v"].rename({"dim_x": "dim_basis"}), bk], dim="dim_basis")
+            dbk = np.einsum("nld,nd->nl", xr.apply_ufunc(self.basis.deriv, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis", "dim_x"]], exclude_dims={"dim_x"}, dask="forbidden"), xva["v"].data)
+            dE = xr.concat([xva["a"].rename({"dim_x": "dim_basis"}), dbk], dim="dim_basis")  # To test
             return bk, E, dE
         else:
             raise ValueError("Basis evaluation goal not specified")
@@ -254,8 +248,8 @@ class Pos_gle_overdamped(Pos_gle_base):
     Extraction of position dependent memory kernel for overdamped dynamics.
     """
 
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, trunc=1.0, L_obs="v", rank_projection=False):
-        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, trunc, L_obs)
+    def __init__(self, *args, L_obs="v", rank_projection=False, **kwargs):
+        Pos_gle_base.__init__(self, *args, L_obs=L_obs, **kwargs)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.N_basis_elt
         if self.basis.const_removed:
@@ -264,15 +258,15 @@ class Pos_gle_overdamped(Pos_gle_base):
         self.rank_projection = rank_projection
 
     def basis_vector(self, xva, compute_for="corrs"):
-        E = self.basis.basis(xva["x"].data)
+        E = xr.apply_ufunc(self.basis.basis, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis"]], exclude_dims={"dim_x"}, dask="forbidden")
         if compute_for == "force":
             return E
         elif compute_for == "pmf":
-            return self.basis.antiderivative(xva["x"].data)
+            return xr.apply_ufunc(self.basis.antiderivative, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis"]], exclude_dims={"dim_x"}, dask="forbidden")
         elif compute_for == "kernel":
             return E.reshape(-1, self.N_basis_elt_kernel, self.dim_x)
         elif compute_for == "corrs":
-            dbk = self.basis.deriv(xva["x"].data)
+            dbk = xr.apply_ufunc(self.basis.deriv, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis", "dim_x"]], exclude_dims={"dim_x"}, dask="forbidden")
             dE = np.einsum("nld,nd->nl", dbk, xva["v"].data)
             return E, E, dE
         else:
@@ -306,17 +300,17 @@ class Pos_gle_overdamped_const_kernel(Pos_gle_base):
     using position-independent kernel.
     """
 
-    def __init__(self, xva_arg, basis, saveall=True, prefix="", verbose=True, kT=2.494, trunc=1.0, L_obs="v"):
-        Pos_gle_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, kT, trunc, L_obs)
+    def __init__(self, *args, L_obs="v", **kwargs):
+        Pos_gle_base.__init__(self, *args, L_obs=L_obs, **kwargs)
         self.N_basis_elt_force = self.N_basis_elt
         self.N_basis_elt_kernel = self.dim_obs
 
     def basis_vector(self, xva, compute_for="corrs"):
-        E = self.basis.basis(xva["x"].data)
+        E = xr.apply_ufunc(self.basis.basis, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis"]], exclude_dims={"dim_x"}, dask="forbidden")
         if compute_for == "force":
             return E
         elif compute_for == "pmf":
-            return self.basis.antiderivative(xva["x"].data)
+            return xr.apply_ufunc(self.basis.antiderivative, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis"]], exclude_dims={"dim_x"}, dask="forbidden")
         elif compute_for == "kernel":
             return np.ones((E.shape[0], self.N_basis_elt_kernel, self.dim_x))
         elif compute_for == "corrs":

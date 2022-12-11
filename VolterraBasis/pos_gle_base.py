@@ -111,6 +111,8 @@ class Pos_gle_base(object):
             print("Trajectories are truncated at lenght {} for dynamic analysis".format(self.trunc_ind))
 
     def _do_check(self, xva_arg):
+        # Il faut transformer la liste pour avoir à la place un seul xarray avec toutes les données
+        # Et on utilise dask si on veut charger les données petits à petit?
         if xva_arg is not None:
             if isinstance(xva_arg, xr.Dataset):
                 self.xva_list = [xva_arg]
@@ -201,7 +203,7 @@ class Pos_gle_base(object):
         avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
         for weight, xva in zip(self.weights, self.xva_list):
             E = self.basis_vector(xva, compute_for="force")
-            avg_gram += np.matmul(E.T, E) / self.weightsum
+            avg_gram += xr.dot(E, E.rename({"dim_basis": "dim_basis'"})) / self.weightsum
         self.invgram = kT * np.linalg.pinv(avg_gram)
 
         if self.verbose:
@@ -269,9 +271,9 @@ class Pos_gle_base(object):
         avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
         for weight, xva in zip(self.weights, self.xva_list):
             E = self.basis_vector(xva, compute_for="force")
-            avg_disp += np.matmul(E.T, xva[self.L_obs].data) / self.weightsum
-            avg_gram += np.matmul(E.T, E) / self.weightsum
-        self.force_coeff = np.matmul(np.linalg.inv(avg_gram), avg_disp)
+            avg_disp += xr.dot(E, xva[self.L_obs]) / self.weightsum
+            avg_gram += xr.dot(E, E.rename({"dim_basis": "dim_basis'"})) / self.weightsum
+        self.force_coeff = np.matmul(np.linalg.inv(avg_gram.data), avg_disp.data)
 
     def compute_corrs(self, large=False, rank_tol=None):
         """

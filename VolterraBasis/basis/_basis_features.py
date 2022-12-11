@@ -38,7 +38,7 @@ class LinearFeatures(TransformerMixin):
         grad = np.zeros((nsamples, dim) + (dim,) * deriv_order)
         if deriv_order == 1:
             for i in range(dim):
-                grad[:, i, i] = 1.0
+                grad[..., i, i] = 1.0
         return grad
 
     def hessian(self, X):
@@ -69,11 +69,13 @@ class PolynomialFeatures(TransformerMixin):
 
     def basis(self, X):
         nsamples, dim = X.shape
+
         features = np.zeros((nsamples, dim * self.degree))
         for n in range(0, self.degree):
             istart = n * dim
             iend = (n + 1) * dim
             features[:, istart:iend] = self.polynom.basis(n)(X)
+        print("Basis", X.shape, features.shape)
         return features
 
     def deriv(self, X, deriv_order=1):

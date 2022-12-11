@@ -19,3 +19,6 @@ def minimal_describe(X):
     """
     nobs, dim = X.shape
     return DescribeResult(nobs, (np.min(X, axis=0), np.max(X, axis=0)), np.mean(X, axis=0), np.zeros(dim), np.zeros(dim), np.zeros(dim))
+
+
+# Il faudrait faire un calcul de descripteurs avec accumulation sur les trajs ?
