@@ -24,20 +24,22 @@ def correlation_1D(a, b=None, subtract_mean=False, trunc=None):
 
 
 def correlation_ND(a, b=None, subtract_mean=False, trunc=None):
+    """
+    Time is along the last dimension per numpy broadcasting rules
+    """
     meana = int(subtract_mean) * np.mean(a)
-    fra = np.fft.fft(a - meana, n=2 ** int(np.ceil((np.log(a.shape[0]) / np.log(2))) + 1), axis=0)  # Do we need that big of an array?
+    fra = np.fft.fft(a - meana, n=2 ** int(np.ceil((np.log(a.shape[-1]) / np.log(2))) + 1), axis=-1)  # Do we need that big of an array?
     if b is None:
-        sf = np.conj(fra)[..., np.newaxis] * fra[:, np.newaxis, ...]
+        sf = np.conj(fra)[np.newaxis, ...] * fra[:, np.newaxis, ...]
     else:
         meanb = int(subtract_mean) * np.mean(b)
-        frb = np.fft.fft(b - meanb, n=2 ** int(np.ceil((np.log(len(b)) / np.log(2))) + 1), axis=0)
-        sf = np.conj(fra)[..., np.newaxis] * frb[:, np.newaxis, ...]
-    res = np.fft.ifft(sf, axis=0)
-
+        frb = np.fft.fft(b - meanb, n=2 ** int(np.ceil((np.log(b.shape[-1]) / np.log(2))) + 1), axis=-1)
+        sf = np.conj(fra) * frb
+    res = np.fft.ifft(sf, axis=-1)
     if trunc is not None:
-        len_trunc = min(a.shape[0], trunc)
+        len_trunc = min(a.shape[-1], trunc)
     else:
-        len_trunc = a.shape[0]
+        len_trunc = a.shape[-1]
     # print(np.arange(a.shape[0], a.shape[0] - len_trunc, -1))
-    cor = np.real(res[:len_trunc]) / np.arange(a.shape[0], a.shape[0] - len_trunc, -1).reshape(-1, 1, 1)  # Normalisation de la moyenne, plus il y a d'écart entre les points moins il y a de points dans la moyenne
+    cor = np.real(res[:, :, :len_trunc]) / np.arange(a.shape[-1], a.shape[-1] - len_trunc, -1).reshape(1, 1, -1)  # Normalisation de la moyenne, plus il y a d'écart entre les points moins il y a de points dans la moyenne
     return cor

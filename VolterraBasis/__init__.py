@@ -3,9 +3,10 @@ import xarray as xr
 import scipy.interpolate
 from ._version import __version__
 
-from .pos_gle_instance import Pos_gle, Pos_gle_with_friction, Pos_gle_no_vel_basis, Pos_gle_const_kernel, Pos_gle_hybrid, Pos_gle_overdamped, Pos_gle_overdamped_const_kernel
-from .pos_gle_fem import Pos_gle_fem
-from .gfpe_instance import Pos_gfpe, Pos_gfpe_fem
+from .models import Pos_gle, Pos_gle_with_friction, Pos_gle_no_vel_basis, Pos_gle_const_kernel, Pos_gle_hybrid, Pos_gle_overdamped, Pos_gle_overdamped_const_kernel
+
+# from .pos_gle_fem import Pos_gle_fem
+# from .gfpe_instance import Pos_gfpe, Pos_gfpe_fem
 from .gle_integrate import Integrator_gle, Integrator_gle_const_kernel, KarhunenLoeveNoiseGenerator
 from .memory_fit import memory_fit, memory_fit_eval, memory_fit_kernel, memory_kernel_eval
 from .prony_fit import prony_inspect_data, prony_fit_times_serie, prony_fit_kernel, prony_series_eval, prony_series_kernel_eval
@@ -19,8 +20,8 @@ __all__ += ["Integrator_gle"]
 __all__ += ["correlation"]
 __all__ += ["memory_fit", "memory_fit_eval", "memory_fit_kernel", "memory_kernel_eval"]
 __all__ += ["prony_fit_times_serie", "prony_series_eval", "prony_fit_kernel", "prony_series_kernel_eval", "prony_inspect_data"]
-__all__ += ["Pos_gle_fem", "Pos_gfpe_fem"]
-__all__ += ["Pos_gfpe"]
+# __all__ += ["Pos_gle_fem", "Pos_gfpe_fem"]
+# __all__ += ["Pos_gfpe"]
 
 
 def xframe(x, time, v=None, a=None, fix_time=False, round_time=1.0e-4, dt=-1):
@@ -166,11 +167,26 @@ def concat_underdamped(xva):
     return xr.Dataset({"x": new_x, "v": new_v}, attrs={"dt": xva.dt})
 
 
+def update_traj_gfpe(xva, model):
+    E_force, E, dE = model.basis_vector(xva)
+    return xva.update({"dE": (["time", "dim_dE"], dE)})
+
+
 def compute_element_location(xva, element_finder):
     """
     Get element from trajectory
     """
     return xva.update({"elem": (["time"], element_finder.find(xva["x"].data))})
+
+
+def apply_on_all_trajs(xva_list, func, *args, **kwargs):
+    """
+    Loop over all trajectories to apply func
+    TODO: Make a parallelized version of the function
+    """
+    for i in range(len(xva_list)):
+        xva_list[i] = func(xva_list[i], *args, **kwargs)
+    return xva_list
 
 
 def compute_1d_fe(xva_list, bins=150, kT=2.494, hist=False):

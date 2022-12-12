@@ -42,8 +42,7 @@ class Trajectories_handler(object):
             Set verbosity.
         """
         self.verbose = verbose
-        self.L_obs = L_obs
-        self.set_of_obs = ["x", "v", self.L_obs]
+        self.set_of_obs = ["x", "v", L_obs]
 
         self._do_check(xva_arg)  # Do some check on the trajectories
 
@@ -72,6 +71,9 @@ class Trajectories_handler(object):
         if self.verbose:
             print("Trajectories are truncated at lenght {} for dynamic analysis".format(self.trunc_ind))
 
+        self.compute_gram = Trajectories_handler._compute_gram
+        self.compute_projection = Trajectories_handler._projection_on_basis
+
     def _do_check(self, xva_arg):
         if xva_arg is not None:
             if isinstance(xva_arg, xr.Dataset):
@@ -89,221 +91,102 @@ class Trajectories_handler(object):
         else:
             self.xva_list = None
 
-    def _update_traj_gfpe(self, model):
-        for i in range(len(self.xva_list)):
-            E_force, E, dE = model.basis_vector(self.xva_list[i])
-            self.xva_list[i].update({"dE": (["time", "dim_dE"], dE)})
-
-    def _loop_over_traj_serial(self, func, model):
+    def _loop_over_traj_serial(self, func, model, **kwargs):
         """
         A generator for iteration over trajectories
         """
         # Et voir alors pour faire une version parallélisé (en distribué)
-        array_res = [func(weight, xva, model) for weight, xva in zip(self.weights, self.xva_list)]
+        array_res = [func(weight, xva, model, **kwargs) for weight, xva in zip(self.weights, self.xva_list)]
         res = [0.0] * len(array_res[0])
         for weight, single_res in zip(self.weights, array_res):
             for i, arr in enumerate(single_res):
-                res[i] += arr * weight / self.weightsum
+                res[i] += arr.to_numpy() * weight / self.weightsum
         return res
-        # for weight, xva in zip(self.weights, self.xva_list):
-        #     yield weight, xva
 
-    def compute_gram(self, kT=1.0):  # ça devrait plus appartenir au model du coup
-        if self.verbose:
-            print("Calculate gram...")
-            print("Use kT:", kT)
-        avg_gram = self.trajs.loop_over_traj(self.trajs._compute_gram, self.model)[0]
-        # avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
-        # for weight, xva in zip(self.weights, self.xva_list):
-        #     E = self.basis_vector(xva, compute_for="force")
-        #     avg_gram += np.matmul(E.T, E) / self.weightsum
-        self.invgram = kT * np.linalg.pinv(avg_gram)
-
-        if self.verbose:
-            print("Found inverse gram:", self.invgram)
-        return kT * avg_gram
-
-    def compute_effective_mass(self, kT=1.0):
+    @classmethod
+    def _projection_on_basis(weight, xva, model, gram_type="force"):
         """
-        Return average effective mass computed from equipartition with the velocity.
+        Do the needed scalar product for one traj
         """
-        if self.verbose:
-            print("Calculate effective mass...")
-            print("Use kT:", kT)
-        v2sum = 0.0
-        for i, xva in enumerate(self.xva_list):
-            v2sum += np.einsum("ik,ij->kj", xva["v"], xva["v"])
-        v2 = v2sum / self.weightsum
-        self.eff_mass = kT * np.linalg.inv(v2)
+        E = model.basis_vector(xva, compute_for=gram_type)
+        avg_disp = xr.dot(E, xva[model.L_obs]) / weight
+        avg_gram = xr.dot(E, E.rename({"dim_basis": "dim_basis'"})) / weight
+        return avg_disp, avg_gram
 
-        if self.verbose:
-            print("Found effective mass:", self.eff_mass)
-        return self.eff_mass
-
-    def compute_pos_effective_mass(self, kT=1.0):
+    @classmethod
+    def _compute_gram(weight, xva, model, gram_type="force"):
         """
-        Return position-dependent effective inverse mass
+        Do the needed scalar product for one traj
         """
-        if self.verbose:
-            print("Calculate kernel gram...")
-        pos_inv_mass = np.zeros((self.dim_x, self.N_basis_elt_force, self.dim_x))
-        avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
-        for weight, xva in zip(self.weights, self.xva_list):
-            E = self.basis_vector(xva, compute_for="force")
-            pos_inv_mass += np.einsum("ik,ij,il->klj", xva["v"], xva["v"], E) / self.weightsum
-            avg_gram += np.matmul(E.T, E) / self.weightsum
-        self.inv_mass_coeff = kT * np.dot(np.linalg.inv(avg_gram), pos_inv_mass)
-        return self.inv_mass_coeff
+        E = model.basis_vector(xva, compute_for=gram_type)
+        avg_gram = xr.dot(E, E.rename({"dim_basis": "dim_basis'"})) / weight
+        return (avg_gram,)
 
-    def compute_kernel_gram(self):
+    @classmethod
+    def _correlation_all(weight, xva, model, method="fft", vectorize=False, second_order_method=True):
         """
-        Return gram matrix of the kernel part of the basis.
+        Do the correlation
+        Return 4 array with dimensions
+
+        bkbkcorrw :(trunc_ind, N_basis_elt_kernel, N_basis_elt_kernel)
+        bkdxcorrw :(trunc_ind, N_basis_elt_kernel, dim_obs)
+        dotbkdxcorrw :(trunc_ind, N_basis_elt_kernel, dim_obs)
+        dotbkbkcorrw :(trunc_ind, N_basis_elt_kernel, N_basis_elt_kernel)
         """
-        if self.kernel_gram is None:
-            if self.verbose:
-                print("Calculate kernel gram...")
-            avg_gram = np.zeros((self.N_basis_elt_kernel, self.N_basis_elt_kernel))
-            for weight, xva in zip(self.weights, self.xva_list):
-                E = self.basis_vector(xva, compute_for="kernel")
-                if self.rank_projection:
-                    E = np.einsum("kj,ijd->ikd", self.P_range, E)
-                avg_gram += np.einsum("ikd,ild->kl", E, E) / self.weightsum  # np.matmul(E.T, E)
-            self.kernel_gram = avg_gram
-        return self.kernel_gram
+        if method == "fft" and vectorize:
+            func = correlation_1D
+        # elif method == "direct" and not vectorize:
+        #     func = correlation_direct_ND
+        # elif method == "direct" and vectorize:
+        #     func = correlation_direct_1D
+        else:
+            func = correlation_ND
+        E_force, E, dE = model.basis_vector(xva)
+        ortho_xva = xva[model.L_obs] - np.matmul(E_force, model.force_coeff)  # TODO
 
-    def compute_mean_force(self):
-        """
-        Computes the mean force from the trajectories.
-        """
-        if self.verbose:
-            print("Calculate mean force...")
-        avg_disp = np.zeros((self.N_basis_elt_force, self.dim_obs))
-        avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
-        for weight, xva in zip(self.weights, self.xva_list):
-            E = self.basis_vector(xva, compute_for="force")
-            avg_disp += np.matmul(E.T, xva[self.L_obs].data) / self.weightsum
-            avg_gram += np.matmul(E.T, E) / self.weightsum
-        self.force_coeff = np.matmul(np.linalg.inv(avg_gram), avg_disp)
+        bkdxcorrw = xr.apply_ufunc(func, E, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
+        bkbkcorrw = xr.apply_ufunc(correlation_ND, E, input_core_dims=[["time"]], output_core_dims=[["dim_basis'", "time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
+        if second_order_method:
+            dotbkdxcorrw = xr.apply_ufunc(func, dE, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
+            dotbkbkcorrw = xr.apply_ufunc(func, dE.rename({"dim_basis": "dim_basis'"}), E, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
+        else:
+            # We can compute only the first element then, that is faster
+            dotbkdxcorrw = xr.dot(dE, xva[model.L_obs], ortho_xva) / weight  # Maybe reshape to add a dimension of size 1 and name time_trunc
+            dotbkbkcorrw = 0.0
+        return bkdxcorrw, dotbkdxcorrw, bkbkcorrw, dotbkbkcorrw
 
-    def compute_corrs(self, large=False, rank_tol=None):
-        """
-        Compute correlation functions.
-
-        Parameters
-        ----------
-        large : bool, default=False
-            When large is true, it use a slower way to compute correlation that is less demanding in memory
-        rank_tol: float, default=None
-            Tolerance for rank computation in case of projection onto the range of the basis
-        """
-        if self.verbose:
-            print("Calculate correlation functions...")
-        if self.force_coeff is None:
-            raise Exception("Mean force has not been computed.")
-
-        self.bkbkcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.N_basis_elt_kernel))
-        self.bkdxcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.dim_obs))
-
-        self.dotbkdxcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.dim_obs))  # Needed for initial value anyway
-        self.dotbkbkcorrw = np.zeros((self.trunc_ind, self.N_basis_elt_kernel, self.N_basis_elt_kernel))
-
-        for weight, xva in zip(self.weights, self.xva_list):
-            E_force, E, dE = self.basis_vector(xva)
-            # print(E_force.shape, E.shape, dE.shape)
-            force = np.matmul(E_force, self.force_coeff)
-            # print(force.shape, xva[self.L_obs].data.shape)
-            # print(self.bkdxcorrw.shape, correlation_ND(E, (xva[self.L_obs].data - force)).shape)
-            if not large:
-                try:
-                    self.bkdxcorrw += weight * correlation_ND(E, (xva[self.L_obs].data - force), trunc=self.trunc_ind)
-                    self.dotbkdxcorrw += weight * correlation_ND(dE, (xva[self.L_obs].data - force), trunc=self.trunc_ind)
-                    self.bkbkcorrw += weight * correlation_ND(E, trunc=self.trunc_ind)
-                    self.dotbkbkcorrw += weight * correlation_ND(dE, E, trunc=self.trunc_ind)
-                except MemoryError:  # If too big slow way
-                    if self.verbose:
-                        print("Too many basis function, compute correlations one by one (slow)")
-                    for n in range(E.shape[1]):
-                        for d in range(self.dim_obs):
-                            self.bkdxcorrw[:, n, d] += weight * correlation_1D(E[:, n], xva[self.L_obs].data[:, d] - force[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
-                            self.dotbkdxcorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva[self.L_obs].data[:, d] - force[:, d], trunc=self.trunc_ind)
-                        for m in range(E.shape[1]):
-                            self.bkbkcorrw[:, n, m] += weight * correlation_1D(E[:, n], E[:, m], trunc=self.trunc_ind)
-                            self.dotbkbkcorrw[:, n, m] += weight * correlation_1D(dE[:, n], E[:, m], trunc=self.trunc_ind)
-            else:
-                for n in range(E.shape[1]):
-                    for d in range(self.dim_obs):
-                        self.bkdxcorrw[:, n, d] += weight * correlation_1D(E[:, n], xva[self.L_obs].data[:, d] - force[:, d], trunc=self.trunc_ind)  # Correlate derivative of observable minus mean value
-                        self.dotbkdxcorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva[self.L_obs].data[:, d] - force[:, d], trunc=self.trunc_ind)
-                    for m in range(E.shape[1]):
-                        self.bkbkcorrw[:, n, m] += weight * correlation_1D(E[:, n], E[:, m], trunc=self.trunc_ind)
-                        self.dotbkbkcorrw[:, n, m] += weight * correlation_1D(dE[:, n], E[:, m], trunc=self.trunc_ind)
-
-        self.bkbkcorrw /= self.weightsum
-        self.bkdxcorrw /= self.weightsum
-        self.dotbkdxcorrw /= self.weightsum
-        self.dotbkbkcorrw /= self.weightsum
-
-        if self.rank_projection:
-            self._set_range_projection(rank_tol)
-
-        if self.saveall:
-            np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(self.trunc_ind, -1))
-            np.savetxt(self.prefix + self.corrsfile, self.bkbkcorrw.reshape(self.trunc_ind, -1))
-            np.savetxt(self.prefix + self.dcorrsdxfile, self.dotbkdxcorrw.reshape(self.trunc_ind, -1))
-            np.savetxt(self.prefix + self.dcorrsfile, self.dotbkbkcorrw.reshape(self.trunc_ind, -1))
-
-
-def projection_force(weight, xva, model):
-    """
-    Do the needed scalar product for one traj
-    """
-    E = model.basis_vector(xva, compute_for="force")
-    avg_disp = np.matmul(E.T, xva[model.L_obs].data)
-    avg_gram = np.matmul(E.T, E)
-    return avg_disp, avg_gram
-
-
-def scalar_product_gram(weight, xva, model):
-    """
-    Do the needed scalar product for one traj
-    """
-    E = model.basis_vector(xva, compute_for="force")
-    avg_gram = np.matmul(E.T, E)
-    return avg_gram
-
-
-def correlation_all(weight, xva, model):
-    """
-    Do the correlation
-    """
-    E_force, E, dE = model.basis_vector(xva)
-    force = np.matmul(E_force, model.force_coeff)
-    bkdxcorrw = weight * correlation_ND(E, (xva[model.L_obs].data - force), trunc=model.trunc_ind)
-    dotbkdxcorrw = weight * correlation_ND(dE, (xva[model.L_obs].data - force), trunc=model.trunc_ind)
-    bkbkcorrw = weight * correlation_ND(E, trunc=model.trunc_ind)
-    dotbkbkcorrw = weight * correlation_ND(dE, E, trunc=model.trunc_ind)
-    return bkdxcorrw, dotbkdxcorrw, bkbkcorrw, dotbkbkcorrw
-
-
-def correlation_large(weight, xva, model):
-    """
-    Correlation when too much
-    """
-    E_force, E, dE = model.basis_vector(xva)
-    force = np.matmul(E_force, model.force_coeff)
-    dim_obs = force.shape[-1]
-    N_basis_elt_kernel = E.shape[1]
-    bkbkcorrw = np.zeros((model.trunc_ind, N_basis_elt_kernel, N_basis_elt_kernel))
-    bkdxcorrw = np.zeros((model.trunc_ind, N_basis_elt_kernel, dim_obs))
-
-    dotbkdxcorrw = np.zeros((model.trunc_ind, N_basis_elt_kernel, dim_obs))
-    dotbkbkcorrw = np.zeros((model.trunc_ind, N_basis_elt_kernel, N_basis_elt_kernel))
-
-    for n in range(N_basis_elt_kernel):
-        for d in range(model.dim_obs):
-            bkdxcorrw[:, n, d] += weight * correlation_1D(E[:, n], xva[model.L_obs].data[:, d] - force[:, d], trunc=model.trunc_ind)  # Correlate derivative of observable minus mean value
-            dotbkdxcorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva[model.L_obs].data[:, d] - force[:, d], trunc=model.trunc_ind)
-        for m in range(N_basis_elt_kernel):
-            bkbkcorrw[:, n, m] += weight * correlation_1D(E[:, n], E[:, m], trunc=model.trunc_ind)
-            dotbkbkcorrw[:, n, m] += weight * correlation_1D(dE[:, n], E[:, m], trunc=model.trunc_ind)
-    return bkdxcorrw, dotbkdxcorrw, bkbkcorrw, dotbkbkcorrw
+    # @classmethod
+    # def _correlation_vectorize(weight, xva, model, method="fft"):
+    #     """
+    #     Vectorized version of the correlation
+    #     Return 4 array with dimensions
+    #
+    #     bkbkcorrw :(trunc_ind, N_basis_elt_kernel, N_basis_elt_kernel)
+    #     bkdxcorrw :(trunc_ind, N_basis_elt_kernel, dim_obs)
+    #     dotbkdxcorrw :(trunc_ind, N_basis_elt_kernel, dim_obs)
+    #     dotbkbkcorrw :(trunc_ind, N_basis_elt_kernel, N_basis_elt_kernel)
+    #
+    #     """
+    #     if method == "direct":
+    #         func = correlation_direct_1D
+    #     else:
+    #         func = correlation_1D
+    #     E_force, E, dE = model.basis_vector(xva)
+    #     force = np.matmul(E_force, model.force_coeff)
+    #     dim_obs = force.shape[-1]
+    #     N_basis_elt_kernel = E.shape[1]
+    #     # On va le faire avec un apply u_func et un vectorize
+    #     bkbkcorrw = np.zeros((model.trunc_ind, N_basis_elt_kernel, N_basis_elt_kernel))
+    #     bkdxcorrw = np.zeros((model.trunc_ind, N_basis_elt_kernel, dim_obs))
+    #
+    #     dotbkdxcorrw = np.zeros((model.trunc_ind, N_basis_elt_kernel, dim_obs))
+    #     dotbkbkcorrw = np.zeros((model.trunc_ind, N_basis_elt_kernel, N_basis_elt_kernel))
+    #
+    #     for n in range(N_basis_elt_kernel):
+    #         for d in range(model.dim_obs):
+    #             bkdxcorrw[:, n, d] += weight * correlation_1D(E[:, n], xva[model.L_obs].data[:, d] - force[:, d], trunc=model.trunc_ind)  # Correlate derivative of observable minus mean value
+    #             dotbkdxcorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva[model.L_obs].data[:, d] - force[:, d], trunc=model.trunc_ind)
+    #         for m in range(N_basis_elt_kernel):
+    #             bkbkcorrw[:, n, m] += weight * correlation_1D(E[:, n], E[:, m], trunc=model.trunc_ind)
+    #             dotbkbkcorrw[:, n, m] += weight * correlation_1D(dE[:, n], E[:, m], trunc=model.trunc_ind)
+    #     return bkdxcorrw, dotbkdxcorrw, bkbkcorrw, dotbkbkcorrw
