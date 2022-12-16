@@ -3,6 +3,8 @@ import xarray as xr
 from scipy.integrate import trapezoid, simpson
 from .basis import describe_from_dim
 
+from .fkernel import memory_rect, memory_trapz, corrs_rect, corrs_trapz
+
 
 def _convert_input_array_for_evaluation(array, dim_x):
     """
@@ -20,7 +22,9 @@ class ModelBase(object):
     The base class for holding the model
     """
 
-    def __init__(self, basis, dt, dim_x=1, dim_obs=1, trunc_ind=1.0, L_obs="a", **kwargs):
+    set_of_obs = ["x", "v"]
+
+    def __init__(self, basis, dt, dim_x=1, dim_obs=1, trunc_ind=-1, L_obs="a", describe_data=None, **kwargs):
         """
         Create an instance of the Pos_gle class.
 
@@ -37,13 +41,16 @@ class ModelBase(object):
             Name of the column containing the time derivative of the observable
         """
         self.L_obs = L_obs
-        self._check_basis(basis)  # Do check on basis
 
-        self.bkbkcorrw = None
-        self.bkdxcorrw = None
-        self.dotbkdxcorrw = None
-        self.dotbkbkcorrw = None
+        self.dim_x = dim_x
+        self.dim_obs = dim_obs
+
+        self.trunc_ind = trunc_ind
+
+        self._check_basis(basis, describe_data)  # Do check on basis
+
         self.force_coeff = None
+        self.kernel = None
 
         self.inv_mass_coeff = None
         self.eff_mass = None
@@ -53,11 +60,6 @@ class ModelBase(object):
 
         self.rank_projection = False
         self.P_range = None
-
-        self.dim_x = dim_x
-        self.dim_obs = dim_obs
-
-        self.trunc_ind = trunc_ind
 
     def _check_basis(self, basis, describe_data=None):
         """
@@ -76,7 +78,7 @@ class ModelBase(object):
 
         self.N_basis_elt = self.basis.n_output_features_
 
-    def fit(self, describe_data):
+    def setup_basis(self, describe_data):
         """
         We can also fit model from data
         """
@@ -145,6 +147,73 @@ class ModelBase(object):
 
     def set_zero_force(self):
         self.force_coeff = np.zeros((self.N_basis_elt_force, self.dim_obs))
+
+    def compute_noise(self, xva, trunc_kernel=None, start_point=0, end_point=None):
+        """
+        From a trajectory get the noise.
+
+        Parameters
+        ----------
+        xva : xarray dataset (['time', 'x', 'v', 'a']) .
+            Use compute_va() or see its output for format details.
+            Input trajectory to compute noise.
+        trunc_kernel : int
+                Number of datapoint of the kernel to consider.
+                Can be used to remove unphysical divergence of the kernel or shortten execution time.
+        """
+        if self.force_coeff is None:
+            raise Exception("Mean force has not been computed.")
+        if trunc_kernel is None:
+            trunc_kernel = self.trunc_ind
+        time_0 = xva["time"].data[0]
+        xva = xva.isel(time=slice(start_point, end_point))
+        time = xva["time"].data - time_0
+        dt = time[1] - time[0]
+        E_force, E, _ = self.basis_vector(xva)
+        if self.rank_projection:
+            E = np.einsum("kj,ij->ik", self.P_range, E)
+        force = xr.dot(E_force, self.force_coeff)
+        if self.method in ["rect", "rectangular", "second_kind_rect"] or self.method is None:
+            memory = memory_rect(self.kernel[:trunc_kernel], E, dt)
+        elif self.method == "trapz" or self.method == "second_kind_trapz":
+            memory = memory_trapz(self.kernel[:trunc_kernel], E, dt)
+        else:
+            raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
+        return time, xva[self.L_obs] - force - memory, xva[self.L_obs], force, memory
+
+    def compute_corrs_w_noise(self, xva, left_op=None):
+        """
+        Compute correlation between noise and left_op
+
+        Parameters
+        ----------
+        xva : xarray dataset (['time', 'x', 'v', 'a']) .
+            Use compute_va() or see its output for format details.
+            Input trajectory to compute noise.
+        """
+        if self.force_coeff is None:
+            raise Exception("Mean force has not been computed.")
+        if self.kernel is None:
+            raise Exception("Kernel has not been computed.")
+
+        dt = xva["time"].data[1] - xva["time"].data[0]
+        E_force, E, _ = self.basis_vector(xva)
+        if self.rank_projection:
+            E = np.einsum("kj,ij->ik", self.P_range, E)
+
+        noise = xva[self.L_obs].data - np.matmul(E_force, self.force_coeff)
+
+        if left_op is None:
+            left_op = noise
+        elif isinstance(left_op, str):
+            left_op = xva[left_op]
+
+        if self.method in ["rect", "rectangular", "second_kind_rect"] or self.method is None:
+            return self.kernel_time, corrs_rect(noise, self.kernel, E, left_op, dt)
+        elif self.method == "trapz" or self.method == "second_kind_trapz":
+            return self.kernel_time[:-1], corrs_trapz(noise, self.kernel, E, left_op, dt)
+        else:
+            raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
 
     def force_eval(self, x, coeffs=None):
         """
@@ -230,7 +299,7 @@ class ModelBase(object):
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")
         if self.rank_projection:
             E = np.einsum("kj,ijd->ikd", self.P_range, E)
-        return self.time, np.einsum("jkd,ikl->ijld", E, coeffs_ker)  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x)
+        return self.kernel_time, np.einsum("jkd,ikl->ijld", E, coeffs_ker)  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x)
 
     def laplace_transform_kernel(self, n_points=None):
         """
@@ -245,7 +314,7 @@ class ModelBase(object):
         s_range = np.linspace(0.0, 1.0 / dt, n_points)
         laplace = np.zeros((n_points, self.kernel.shape[1], self.kernel.shape[2]))
         for n, s in enumerate(s_range):
-            laplace[n, :, :] = simpson(np.einsum("i,ijk-> ijk", np.exp(-s * self.time[:, 0]), self.kernel), self.time[:, 0], axis=0)
+            laplace[n, :, :] = simpson(np.einsum("i,ijk-> ijk", np.exp(-s * self.kernel_time[:, 0]), self.kernel), self.kernel_time[:, 0], axis=0)
         return s_range, laplace
 
     def check_volterra_inversion(self):
@@ -272,12 +341,27 @@ class ModelBase(object):
         #     res_int += np.einsum("jk,ik->ij", self.bkbkcorrw[0, :, :], self.kernel)
         return time, res_int
 
+    def save_model(self):
+        """
+        Return dictionnary version of the model than can be save to file
+        """
+
+        # On doit retourner coeffs de la force, le noyau mémoire, et de quoi générer la base
+
+    @classmethod
+    def load_model(save):
+        """
+        Create a model from a save
+        """
+
 
 class Pos_gle(ModelBase):
     """
     The main class for the position dependent memory extraction,
     holding all data and the extracted memory kernels.
     """
+
+    set_of_obs = ["x", "v", "a"]
 
     def __init__(self, *args, **kwargs):
         """
@@ -334,6 +418,8 @@ class Pos_gle_with_friction(ModelBase):
     A derived class in which we don't enforce zero instantaneous friction
     """
 
+    set_of_obs = ["x", "v", "a"]
+
     def __init__(self, *args, **kwargs):
         Pos_gle.__init__(self, *args, **kwargs)
         self.N_basis_elt_force = 2 * self.N_basis_elt - int(self.basis.const_removed) * self.dim_x
@@ -386,6 +472,8 @@ class Pos_gle_no_vel_basis(ModelBase):
     Use basis function dependent of the position only
     """
 
+    set_of_obs = ["x", "v"]
+
     def __init__(self, *args, **kwargs):
         ModelBase.__init__(self, *args, **kwargs)
         self.N_basis_elt_force = self.N_basis_elt
@@ -415,6 +503,8 @@ class Pos_gle_const_kernel(ModelBase):
     """
     A derived class in which we the kernel is computed independent of the position
     """
+
+    set_of_obs = ["x", "v", "a"]
 
     def __init__(self, *args, **kwargs):
         ModelBase.__init__(self, *args, **kwargs)
@@ -466,6 +556,8 @@ class Pos_gle_hybrid(ModelBase):
     Implement the hybrid projector of arXiv:2202.01922
     """
 
+    set_of_obs = ["x", "v", "a"]
+
     def __init__(self, *args, **kwargs):
         ModelBase.__init__(self, *args, **kwargs)
         self.N_basis_elt_force = self.N_basis_elt
@@ -498,7 +590,7 @@ class Pos_gle_hybrid(ModelBase):
         """
         if self.kernel is None:
             raise Exception("Kernel has not been computed.")
-        return self.time, self.kernel[:, 0, :]
+        return self.kernel_time, self.kernel[:, 0, :]
 
     def kernel_eval(self, x):
         """
@@ -509,13 +601,15 @@ class Pos_gle_hybrid(ModelBase):
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")
         if self.rank_projection:
             E = np.einsum("kj,ijd->ikd", self.P_range, E)
-        return self.time, np.einsum("jkd,ikl->ijld", E, self.kernel[:, 1:, :])  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x)
+        return self.kernel_time, np.einsum("jkd,ikl->ijld", E, self.kernel[:, 1:, :])  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x)
 
 
 class Pos_gle_overdamped(ModelBase):
     """
     Extraction of position dependent memory kernel for overdamped dynamics.
     """
+
+    set_of_obs = ["x", "v"]
 
     def __init__(self, *args, L_obs="v", rank_projection=False, **kwargs):
         ModelBase.__init__(self, *args, L_obs=L_obs, **kwargs)
@@ -568,6 +662,8 @@ class Pos_gle_overdamped_const_kernel(ModelBase):
     Extraction of position dependent memory kernel for overdamped dynamics
     using position-independent kernel.
     """
+
+    set_of_obs = ["x", "v"]
 
     def __init__(self, *args, L_obs="v", **kwargs):
         ModelBase.__init__(self, *args, L_obs=L_obs, **kwargs)

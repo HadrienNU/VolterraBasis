@@ -24,24 +24,23 @@ for i in range(1, trj.shape[1]):
     xva_list.append(xvaf)
 
 Nsplines = 10
-mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), trunc=10, kT=1.0, saveall=False)
+estimator = vb.Estimator_gle(vb.Trajectories_handler(xva_list), vb.Pos_gle, bf.BSplineFeatures(Nsplines), trunc=10, saveall=False)
 # mymem = vb.Pos_gle(xva_list, bf.PolynomialFeatures(deg=1), trunc=10, kT=1.0, saveall=False)
 # mymem = vb.Pos_gle(xva_list, bf.LinearFeatures(), trunc=10, kT=1.0, saveall=False)
-print("Dimension of observable", mymem.dim_x)
-mymem.compute_mean_force()
-print(mymem.force_coeff)
-mymem.compute_corrs()
-mymem.compute_kernel(method="trapz")
-time, kernel = mymem.kernel_eval([1.5, 2.0, 2.5])
+print("Dimension of observable", estimator.model.dim_x)
+estimator.compute_mean_force()
+estimator.compute_corrs()
+model = estimator.compute_kernel(method="trapz")
+time, kernel = model.kernel_eval([1.5, 2.0, 2.5])
 print(time.shape, kernel.shape)
 # To find a correct parametrization of the space
 bins = np.histogram_bin_edges(xvaf["x"], bins=15)
 xfa = (bins[1:] + bins[:-1]) / 2.0
-force = mymem.force_eval(xfa)
+force = model.force_eval(xfa)
 
 
 # Compute noise
-time_noise, noise_reconstructed, _, _, _ = mymem.compute_noise(xva_list[0], trunc_kernel=200)
+time_noise, noise_reconstructed, _, _, _ = model.compute_noise(xva_list[0], trunc_kernel=200)
 
 
 fig_kernel, axs = plt.subplots(1, 3)

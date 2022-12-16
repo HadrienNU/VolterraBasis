@@ -4,6 +4,8 @@ import scipy.interpolate
 from ._version import __version__
 
 from .models import Pos_gle, Pos_gle_with_friction, Pos_gle_no_vel_basis, Pos_gle_const_kernel, Pos_gle_hybrid, Pos_gle_overdamped, Pos_gle_overdamped_const_kernel
+from .gle_estimation import Estimator_gle
+from .trajectories_handler import Trajectories_handler
 
 # from .pos_gle_fem import Pos_gle_fem
 # from .gfpe_instance import Pos_gfpe, Pos_gfpe_fem
@@ -16,7 +18,8 @@ from .mesh_utils import *
 
 __all__ = ["Pos_gle", "Pos_gle_with_friction", "Pos_gle_no_vel_basis", "Pos_gle_const_kernel", "Pos_gle_hybrid"]
 __all__ += ["Pos_gle_overdamped", "Pos_gle_overdamped_const_kernel"]
-__all__ += ["Integrator_gle"]
+__all__ += ["Trajectories_handler"]
+__all__ += ["Estimator_gle", "Integrator_gle"]
 __all__ += ["correlation"]
 __all__ += ["memory_fit", "memory_fit_eval", "memory_fit_kernel", "memory_kernel_eval"]
 __all__ += ["prony_fit_times_serie", "prony_series_eval", "prony_fit_kernel", "prony_series_kernel_eval", "prony_inspect_data"]
