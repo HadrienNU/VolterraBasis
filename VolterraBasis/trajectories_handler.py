@@ -1,6 +1,9 @@
 import numpy as np
 import xarray as xr
 from scipy.integrate import trapezoid, simpson
+from scipy.stats import describe
+
+from .basis import sum_describe
 
 from .fkernel import kernel_first_kind_trapz, kernel_first_kind_rect, kernel_first_kind_midpoint, kernel_second_kind_rect, kernel_second_kind_trapz
 from .fkernel import memory_rect, memory_trapz, corrs_rect, corrs_trapz
@@ -94,6 +97,7 @@ class Trajectories_handler(object):
         self.trunc_ind = (self.xva_list[0]["time"] <= trunc).sum().data
         if self.verbose:
             print("Trajectories are truncated at lenght {} for dynamic analysis".format(self.trunc_ind))
+        return self.trunc_ind
 
     def describe_data(self):
         """
@@ -101,8 +105,11 @@ class Trajectories_handler(object):
         """
         # Prévoir la sauvegarde du résultats pour 1) ne pas avoir à la calculer à chaque fois 2) pouvoir le sauvegarder
         if self.data_describe is None:
-
-        TODO
+            describe_set = [describe(xva["x"].data) for xva in self.xva_list]
+            self.data_describe = describe_set[0]
+            for des_data in describe_set[1:]:
+                self.data_describe = sum_describe(self.data_describe, des_data)
+        return self.data_describe
 
     def _loop_over_trajs_serial(self, func, model, **kwargs):
         """
@@ -129,7 +136,7 @@ class Trajectories_handler(object):
         E = model.basis_vector(xva, compute_for=gram_type)
         avg_disp = xr.dot(E, xva[model.L_obs]) / weight
         avg_gram = xr.dot(E, E.rename({"dim_basis": "dim_basis'"})) / weight
-        print(E)
+        # print(E)
         return avg_disp, avg_gram
 
     @staticmethod
@@ -161,7 +168,8 @@ class Trajectories_handler(object):
         else:
             func = correlation_ND
         E_force, E, dE = model.basis_vector(xva)
-        ortho_xva = xva[model.L_obs] - xr.dot(E_force, model.force_coeff)  # TODO
+        # print(E_force, model.force_coeff)
+        ortho_xva = xva[model.L_obs] - xr.dot(E_force, xr.DataArray(model.force_coeff, dims=["dim_basis", "dim_x"]))  # TODO
 
         bkdxcorrw = xr.apply_ufunc(func, E, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
         bkbkcorrw = xr.apply_ufunc(correlation_ND, E, input_core_dims=[["time"]], output_core_dims=[["dim_basis'", "time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
@@ -171,7 +179,7 @@ class Trajectories_handler(object):
         else:
             # We can compute only the first element then, that is faster
             dotbkdxcorrw = xr.dot(dE, xva[model.L_obs], ortho_xva) / weight  # Maybe reshape to add a dimension of size 1 and name time_trunc
-            dotbkbkcorrw = 0.0
+            dotbkbkcorrw = np.array([[0.0]])
         return bkdxcorrw, dotbkdxcorrw, bkbkcorrw, dotbkbkcorrw
 
     # @staticmethod

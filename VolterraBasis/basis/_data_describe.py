@@ -28,4 +28,8 @@ def describe_from_dim(dim):
     return DescribeResult(15, (np.zeros(dim), np.zeros(dim)), np.zeros(dim), np.zeros(dim), np.zeros(dim), np.zeros(dim))
 
 
+def sum_describe(d1, d2):
+    return DescribeResult(d1.nobs + d2.nobs, (np.minimum(d1.minmax[0], d2.minmax[0]), np.maximum(d1.minmax[1], d2.minmax[1])), (d1.mean * d1.nobs + d2.mean * d2.nobs) / (d1.nobs + d2.nobs), d1.variance, d1.skewness, d1.kurtosis)
+
+
 # Il faudrait faire un calcul de descripteurs avec accumulation sur les trajs ?

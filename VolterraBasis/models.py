@@ -1,6 +1,6 @@
 import numpy as np
 import xarray as xr
-from scipy.integrate import trapezoid, simpson
+from scipy.integrate import simpson
 from .basis import describe_from_dim
 
 from .fkernel import memory_rect, memory_trapz, corrs_rect, corrs_trapz
@@ -45,6 +45,7 @@ class ModelBase(object):
         self.dim_x = dim_x
         self.dim_obs = dim_obs
 
+        self.dt = dt
         self.trunc_ind = trunc_ind
 
         self._check_basis(basis, describe_data)  # Do check on basis
@@ -93,14 +94,13 @@ class ModelBase(object):
 
         self.N_basis_elt = self.basis.n_output_features_
 
-    def _set_range_projection(self, rank_tol):
+    def _set_range_projection(self, rank_tol, B0):
         """
         Set and perfom the projection onto the range of the basis for kernel
         """
         if self.verbose:
             print("Projection on range space...")
         # Check actual rank of the matrix
-        B0 = self.bkbkcorrw[0, :, :]
         # Do SVD
         U, S, V = np.linalg.svd(B0, compute_uv=True, hermitian=True)
         # Compute rank from svd
@@ -116,14 +116,6 @@ class ModelBase(object):
             # Construct projection
             self.P_range = U[:, :rank].T  # # Save the matrix for future use, matrix is rank x N_basis_elt_kernel
             # Faster to do one product in order
-            tempbkbkcorrw = np.einsum("ijk,mk->ijm", self.bkbkcorrw, self.P_range)
-            self.bkbkcorrw = np.einsum("lj,ijk->ilk", self.P_range, tempbkbkcorrw)
-            # self.bkbkcorrw = np.einsum("lj,ijk,mk->ilm", self.P_range, self.bkbkcorrw, self.P_range)
-            self.bkdxcorrw = np.einsum("kj,ijd->ikd", self.P_range, self.bkdxcorrw)
-            if self.dotbkdxcorrw is not None:
-                self.dotbkdxcorrw = np.einsum("kj,ijd->ikd", self.P_range, self.dotbkdxcorrw)
-            if self.dotbkbkcorrw is not None:
-                self.dotbkbkcorrw = np.einsum("lj,ijk,mk->ilm", self.P_range, self.dotbkbkcorrw, self.P_range)
         else:
             print("No projection onto the range of the basis performed as basis is not deficient.")
             self.P_range = np.identity(self.N_basis_elt_kernel)
@@ -172,7 +164,7 @@ class ModelBase(object):
         E_force, E, _ = self.basis_vector(xva)
         if self.rank_projection:
             E = np.einsum("kj,ij->ik", self.P_range, E)
-        force = xr.dot(E_force, self.force_coeff)
+        force = xr.dot(E_force, xr.DataArray(self.force_coeff, dims=["dim_basis", "dim_x"]))
         if self.method in ["rect", "rectangular", "second_kind_rect"] or self.method is None:
             memory = memory_rect(self.kernel[:trunc_kernel], E, dt)
         elif self.method == "trapz" or self.method == "second_kind_trapz":
@@ -201,7 +193,7 @@ class ModelBase(object):
         if self.rank_projection:
             E = np.einsum("kj,ij->ik", self.P_range, E)
 
-        noise = xva[self.L_obs].data - np.matmul(E_force, self.force_coeff)
+        noise = xva[self.L_obs].to_numpy() - np.matmul(E_force, xr.DataArray(self.force_coeff, dims=["dim_basis", "dim_x"])).to_numpy()
 
         if left_op is None:
             left_op = noise
@@ -299,9 +291,9 @@ class ModelBase(object):
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")
         if self.rank_projection:
             E = np.einsum("kj,ijd->ikd", self.P_range, E)
-        return self.kernel_time, np.einsum("jkd,ikl->ijld", E, coeffs_ker)  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x)
+        return self.time_kernel, np.einsum("jkd,ikl->ijld", E, coeffs_ker)  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x)
 
-    def laplace_transform_kernel(self, n_points=None):
+    def laplace_transform_kernel(self, s_start=0.0, s_end=None, n_points=None):
         """
         Compute the Laplace transform of the kernel matrix
         """
@@ -309,37 +301,14 @@ class ModelBase(object):
             raise Exception("Kernel has not been computed.")
         if n_points is None:
             n_points = self.trunc_ind
-        dt = self.dt
+        if s_end is None:
+            s_end = 1.0 / self.dt
         # mintimelenght = self.trunc_ind * dt
-        s_range = np.linspace(0.0, 1.0 / dt, n_points)
+        s_range = np.linspace(s_start, s_end, n_points)
         laplace = np.zeros((n_points, self.kernel.shape[1], self.kernel.shape[2]))
         for n, s in enumerate(s_range):
             laplace[n, :, :] = simpson(np.einsum("i,ijk-> ijk", np.exp(-s * self.kernel_time[:, 0]), self.kernel), self.kernel_time[:, 0], axis=0)
         return s_range, laplace
-
-    def check_volterra_inversion(self):
-        """
-        For checking if the volterra equation is correctly inversed
-        Compute the integral in volterra equation using trapezoidal rule
-        """
-        if self.kernel is None:
-            raise Exception("Kernel has not been computed.")
-        dt = self.dt
-        time = np.arange(self.bkdxcorrw.shape[0]) * dt
-        res_int = np.zeros(self.bkdxcorrw.shape)
-        # res_int[0, :] = 0.5 * dt * to_integrate[0, :]
-        # if method == "trapz":
-        for n in range(self.trunc_ind):
-            to_integrate = np.einsum("ijk,ikl->ijl", self.bkbkcorrw[: n + 1, :, :][::-1, :, :], self.kernel[: n + 1, :, :])
-            res_int[n, :] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
-            # res_int[n, :] = -1 * simpson(to_integrate, dx=dt, axis=0, even="last")  # res_int[n - 1, :] + 0.5 * dt * (to_integrate[n - 1, :] + to_integrate[n, :])
-        # else:
-        #     for n in range(self.trunc_ind):
-        #         to_integrate = np.einsum("ijk,ik->ij", self.dotbkbkcorrw[: n + 1, :, :][::-1, :, :], self.kernel[: n + 1, :])
-        #         res_int[n, :] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
-        #     # res_int[n, :] = -1 * simpson(to_integrate, dx=dt, axis=0, even="last")
-        #     res_int += np.einsum("jk,ik->ij", self.bkbkcorrw[0, :, :], self.kernel)
-        return time, res_int
 
     def save_model(self):
         """

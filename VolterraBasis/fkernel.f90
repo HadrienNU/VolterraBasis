@@ -34,14 +34,14 @@ end module lapackMod
 subroutine rect_integral(res,dt,n,B,kernel,dim_basis,dim_x,dim_out)
   implicit none
   integer,intent(in)::n,dim_basis,dim_x,dim_out
-  double precision,dimension(0:n, dim_out, dim_basis),intent(in)::B
-  double precision,dimension(0:n, dim_basis,dim_x),intent(in)::kernel
+  double precision,dimension(dim_out, dim_basis,0:n),intent(in)::B
+  double precision,dimension(0:n,dim_basis,dim_x),intent(in)::kernel
   double precision,dimension(dim_out,dim_x),intent(out)::res
   double precision,intent(in)::dt
   integer::j
   res=0.
   do j=0,n-1
-     res=res+dt*matmul(B(n-j,:,:),kernel(j,:,:))
+     res=res+dt*matmul(B(:,:,n-j),kernel(j,:,:))
   end do
 end subroutine rect_integral
 
@@ -49,14 +49,14 @@ end subroutine rect_integral
 subroutine midpoint_integral(res,dt,n,B,kernel,dim_basis,dim_x,dim_out)
   implicit none
   integer,intent(in)::n,dim_basis,dim_x,dim_out
-  double precision,dimension(0:2*n, dim_out, dim_basis),intent(in)::B
-  double precision,dimension(0:n, dim_basis,dim_x),intent(in)::kernel
+  double precision,dimension(dim_out, dim_basis,0:2*n),intent(in)::B
+  double precision,dimension(0:n,dim_basis,dim_x),intent(in)::kernel
   double precision,dimension(dim_out,dim_x),intent(out)::res
   double precision,intent(in)::dt
   integer::j
   res=0.
   do j=0,n-1
-     res=res+dt*matmul(B(2*(n-j),:,:),kernel(j,:,:))
+     res=res+dt*matmul(B(:,:,2*(n-j)),kernel(j,:,:))
   end do
 end subroutine midpoint_integral
 
@@ -65,14 +65,14 @@ end subroutine midpoint_integral
 subroutine trapz_integral(res,dt,n,B,kernel,dim_basis,dim_x,dim_out)
   implicit none
   integer,intent(in)::n,dim_basis,dim_x,dim_out
-  double precision,dimension(0:n, dim_out, dim_basis),intent(in)::B
-  double precision,dimension(0:n, dim_basis,dim_x),intent(in)::kernel
+  double precision,dimension(dim_out, dim_basis,0:n),intent(in)::B
+  double precision,dimension(0:n,dim_basis,dim_x),intent(in)::kernel
   double precision,dimension(dim_out,dim_x),intent(out)::res
   double precision,intent(in)::dt
   integer::j
-  res=0.5*dt*matmul(B(n,:,:),kernel(0,:,:))
+  res=0.5*dt*matmul(B(:,:,n),kernel(0,:,:))
   do j=1,n-1
-     res=res+dt*matmul(B(n-j,:,:),kernel(j,:,:))
+     res=res+dt*matmul(B(:,:,n-j),kernel(j,:,:))
   end do
 end subroutine trapz_integral
 
@@ -80,8 +80,8 @@ end subroutine trapz_integral
 subroutine simpson_integral(res,dt,n,B,kernel,dim_basis,dim_x,dim_out)
   implicit none
   integer,intent(in)::n,dim_basis,dim_x,dim_out
-  double precision,dimension(0:n, dim_out, dim_basis),intent(in)::B
-  double precision,dimension(0:n, dim_basis,dim_x),intent(in)::kernel
+  double precision,dimension(dim_out, dim_basis,0:n),intent(in)::B
+  double precision,dimension(0:n,dim_basis,dim_x),intent(in)::kernel
   double precision,dimension(dim_out,dim_x),intent(out)::res
   double precision,intent(in)::dt
   integer::j,start_j
@@ -89,18 +89,18 @@ subroutine simpson_integral(res,dt,n,B,kernel,dim_basis,dim_x,dim_out)
   h=dt/3.
   !n even use trapezodial rule for first point
   if(mod(n,2) ==1) then
-     res=0.5*dt*matmul(B(n,:,:),kernel(0,:,:))+(0.5*dt+h)*matmul(B(n-1,:,:),kernel(1,:,:)) ! Do trapz rule on first interval
+     res=0.5*dt*matmul(B(:,:,n),kernel(0,:,:))+(0.5*dt+h)*matmul(B(:,:,n-1),kernel(1,:,:)) ! Do trapz rule on first interval
      start_j=2
   else
-     res=h*matmul(B(n,:,:),kernel(0,:,:))
+     res=h*matmul(B(:,:,n),kernel(0,:,:))
      start_j=1
   end if
 
   do j= start_j,n-2,2
    ! write(*,*) n,j,j+1
-     res=res+4*h*matmul(B(n-j,:,:),kernel(j,:,:))+2*h*matmul(B(n-j-1,:,:),kernel(j+1,:,:))
+     res=res+4*h*matmul(B(:,:,n-j),kernel(j,:,:))+2*h*matmul(B(:,:,n-j-1),kernel(j+1,:,:))
   end do
-  res=res+4*h*matmul(B(1,:,:),kernel(n-1,:,:))
+  res=res+4*h*matmul(B(:,:,1),kernel(n-1,:,:))
   !write(*,*) '--'
 end subroutine simpson_integral
 
@@ -109,21 +109,21 @@ subroutine kernel_first_kind_rect(lenTraj, dim_basis, dim_x, kernel,  B, DxB,dt)
   use lapackMod
   implicit none
   integer,intent(in)::lenTraj,dim_basis,dim_x
-  double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(out)::kernel
-  double precision,dimension(0:lenTraj, dim_basis, dim_basis),intent(in)::B
-  double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(in)::DxB
+  double precision,dimension(0:lenTraj,dim_basis,dim_x),intent(out)::kernel
+  double precision,dimension(dim_basis, dim_basis,0:lenTraj),intent(in)::B
+  double precision,dimension(dim_basis,dim_x,0:lenTraj),intent(in)::DxB
   double precision,intent(in)::dt
   double precision,dimension(dim_basis,dim_basis)::invB0
   double precision,dimension(dim_basis,dim_x)::num
   integer::i
 
-  invB0=inv(dt*B(1,:,:)) ! Update this depending of integration rule
+  invB0=inv(dt*B(:,:,1)) ! Update this depending of integration rule
 
-  kernel(0,:,:)=-1*matmul(invB0,DxB(1,:,:))
+  kernel(0,:,:)=-1*matmul(invB0,DxB(:,:,1))
 
   do i=1,lenTraj-1 !! for i in range(1, lenTraj):
-     call rect_integral(num,dt,i,B(1:i+1,:,:),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
-     kernel(i,:,:)=-1*matmul(invB0,num+DxB(i+1,:,:))
+     call rect_integral(num,dt,i,B(:,:,1:i+1),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
+     kernel(i,:,:)=-1*matmul(invB0,num+DxB(:,:,i+1))
   end do
 
 
@@ -133,21 +133,21 @@ subroutine kernel_first_kind_midpoint(lenTraj, dim_basis,dim_x, kernel,  B, DxB,
   use lapackMod
   implicit none
   integer,intent(in)::lenTraj,dim_basis,dim_x
-  double precision,dimension(0:(lenTraj-1)/2, dim_basis,dim_x),intent(out)::kernel
-  double precision,dimension(0:lenTraj, dim_basis, dim_basis),intent(in)::B
-  double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(in)::DxB
+  double precision,dimension(0:(lenTraj-1)/2,dim_basis, dim_x),intent(out)::kernel
+  double precision,dimension(dim_basis, dim_basis, 0:lenTraj),intent(in)::B
+  double precision,dimension(dim_basis, dim_x, 0:lenTraj),intent(in)::DxB
   double precision,intent(in)::dt
   double precision,dimension(dim_basis,dim_basis)::invB0
   double precision,dimension(dim_basis,dim_x)::num
   integer::i
 
-  invB0=inv(2*dt*B(1,:,:)) ! Update this depending of integration rule
+  invB0=inv(2*dt*B(:,:,1)) ! Update this depending of integration rule
 
-  kernel(0,:,:)=-1*matmul(invB0,DxB(1,:,:))
+  kernel(0,:,:)=-1*matmul(invB0,DxB(:,:,1))
 
   do i=1,lenTraj/2-1 !! for i in range(1, lenTraj):
-     call midpoint_integral(num,2*dt,i,B(0:2*i,:,:),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
-     kernel(i,:,:)=-1*matmul(invB0,num+DxB(2*i+1,:,:))
+     call midpoint_integral(num,2*dt,i,B(:,:,0:2*i),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
+     kernel(i,:,:)=-1*matmul(invB0,num+DxB(:,:,2*i+1))
   end do
 
 
@@ -159,20 +159,20 @@ subroutine kernel_first_kind_trapz(lenTraj, dim_basis,dim_x, kernel, k0, B, DxB,
   integer,intent(in)::lenTraj,dim_basis,dim_x
   double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(out)::kernel
   double precision,dimension(dim_basis,dim_x),intent(in)::k0
-  double precision,dimension(0:lenTraj, dim_basis, dim_basis),intent(in)::B
-  double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(in)::DxB
+  double precision,dimension(dim_basis, dim_basis,0:lenTraj),intent(in)::B
+  double precision,dimension(dim_basis,dim_x,0:lenTraj),intent(in)::DxB
   double precision,intent(in)::dt
   double precision,dimension(dim_basis,dim_basis)::invB0
   double precision,dimension(dim_basis,dim_x)::num
   integer::i
 
-  invB0=inv(0.5*dt*B(0,:,:)) ! Update this depending of integration rule
+  invB0=inv(0.5*dt*B(:,:,0)) ! Update this depending of integration rule
 
   kernel(0,:,:)=k0
 
   do i=1,lenTraj !! for i in range(1, lenTraj):
-     call trapz_integral(num,dt,i,B(0:i,:,:),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
-     kernel(i,:,:)=-1*matmul(invB0,num+DxB(i,:,:))
+     call trapz_integral(num,dt,i,B(:,:,0:i),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
+     kernel(i,:,:)=-1*matmul(invB0,num+DxB(:,:,i))
   end do
 
 
@@ -184,55 +184,28 @@ subroutine kernel_first_kind_simpson(lenTraj, dim_basis,dim_x, kernel, k0, B, Dx
   integer,intent(in)::lenTraj,dim_basis,dim_x
   double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(out)::kernel
   double precision,dimension(dim_basis,dim_x),intent(in)::k0
-  double precision,dimension(0:lenTraj, dim_basis, dim_basis),intent(in)::B
-  double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(in)::DxB
+  double precision,dimension(dim_basis, dim_basis,0:lenTraj),intent(in)::B
+  double precision,dimension(dim_basis,dim_x,0:lenTraj),intent(in)::DxB
   double precision,intent(in)::dt
   double precision,dimension(dim_basis,dim_basis)::invB0
   double precision,dimension(dim_basis,dim_x)::num
   integer::i
 
-  invB0=inv(0.5*dt*B(0,:,:)) ! Update this depending of integration rule
+  invB0=inv(0.5*dt*B(:,:,0)) ! Update this depending of integration rule
 
   kernel(0,:,:)=k0
 
-  kernel(1,:,:)=matmul(invB0,-1*DxB(1,:,:)-0.5*dt*matmul(B(1,:,:),kernel(0,:,:))) ! First point trapz rule
+  kernel(1,:,:)=matmul(invB0,-1*DxB(:,:,1)-0.5*dt*matmul(B(:,:,1),kernel(0,:,:))) ! First point trapz rule
 
-  invB0=inv(dt*B(0,:,:)/3.)
+  invB0=inv(dt*B(:,:,0)/3.)
 
   do i=2,lenTraj
-     call simpson_integral(num,dt,i,B(0:i,:,:),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
-     kernel(i,:,:)=-1*matmul(invB0,num+DxB(i,:,:))
+     call simpson_integral(num,dt,i,B(:,:,0:i),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
+     kernel(i,:,:)=-1*matmul(invB0,num+DxB(:,:,i))
   end do
 
 
 end subroutine kernel_first_kind_simpson
-
-
-subroutine kernel_second_kind(lenTraj, dim_basis,dim_x, kernel, k0, B0, Bdot, DxBdot,dt)
-  use lapackMod
-  implicit none
-  integer,intent(in)::lenTraj,dim_basis,dim_x
-  double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(out)::kernel
-  double precision,dimension(dim_basis,dim_x),intent(in)::k0
-  double precision,dimension(dim_basis,dim_basis),intent(in)::B0
-  double precision,dimension(0:lenTraj, dim_basis, dim_basis),intent(in)::Bdot
-  double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(in)::DxBdot
-  double precision,intent(in)::dt
-  double precision,dimension(dim_basis,dim_basis)::invB0
-  double precision,dimension(dim_basis,dim_x)::num
-  integer::i
-
-  invB0=inv(B0+0.5*dt*Bdot(0,:,:)) ! Update this depending of integration rule
-
-  kernel(0,:,:)=k0
-
-  do i=1,lenTraj !! for i in range(1, lenTraj):
-     call trapz_integral(num,dt,i,Bdot(0:i,:,:),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
-     kernel(i,:,:)=matmul(invB0,num+DxBdot(i,:,:))
-  end do
-
-
-end subroutine kernel_second_kind
 
 
 subroutine kernel_second_kind_rect(lenTraj, dim_basis,dim_x, kernel, k0, B0, Bdot, DxBdot,dt)
@@ -242,8 +215,8 @@ subroutine kernel_second_kind_rect(lenTraj, dim_basis,dim_x, kernel, k0, B0, Bdo
   double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(out)::kernel
   double precision,dimension(dim_basis,dim_x),intent(in)::k0
   double precision,dimension(dim_basis,dim_basis),intent(in)::B0
-  double precision,dimension(0:lenTraj, dim_basis, dim_basis),intent(in)::Bdot
-  double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(in)::DxBdot
+  double precision,dimension(dim_basis, dim_basis,0:lenTraj),intent(in)::Bdot
+  double precision,dimension(dim_basis,dim_x,0:lenTraj),intent(in)::DxBdot
   double precision,intent(in)::dt
   double precision,dimension(dim_basis,dim_basis)::invB0
   double precision,dimension(dim_basis,dim_x)::num
@@ -254,8 +227,8 @@ subroutine kernel_second_kind_rect(lenTraj, dim_basis,dim_x, kernel, k0, B0, Bdo
   kernel(0,:,:)=k0
 
   do i=1,lenTraj !! for i in range(1, lenTraj):
-     call rect_integral(num,dt,i,Bdot(0:i,:,:),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
-     kernel(i,:,:)=matmul(invB0,num+DxBdot(i,:,:))
+     call rect_integral(num,dt,i,Bdot(:,:,0:i),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
+     kernel(i,:,:)=matmul(invB0,num+DxBdot(:,:,i))
   end do
 
 
@@ -269,24 +242,25 @@ subroutine kernel_second_kind_trapz(lenTraj, dim_basis,dim_x, kernel, k0, B0, Bd
   double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(out)::kernel
   double precision,dimension(dim_basis,dim_x),intent(in)::k0
   double precision,dimension(dim_basis,dim_basis),intent(in)::B0
-  double precision,dimension(0:lenTraj, dim_basis, dim_basis),intent(in)::Bdot
-  double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(in)::DxBdot
+  double precision,dimension(dim_basis, dim_basis,0:lenTraj),intent(in)::Bdot
+  double precision,dimension(dim_basis,dim_x,0:lenTraj),intent(in)::DxBdot
   double precision,intent(in)::dt
   double precision,dimension(dim_basis,dim_basis)::invB0
   double precision,dimension(dim_basis,dim_x)::num
   integer::i
 
-  invB0=inv(B0-0.5*dt*Bdot(0,:,:)) ! Update this depending of integration rule
+  invB0=inv(B0-0.5*dt*Bdot(:,:,0)) ! Update this depending of integration rule
 
   kernel(0,:,:)=k0
 
   do i=1,lenTraj !! for i in range(1, lenTraj):
-     call trapz_integral(num,dt,i,Bdot(0:i,:,:),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
-     kernel(i,:,:)=matmul(invB0,num+DxBdot(i,:,:))
+     call trapz_integral(num,dt,i,Bdot(:,:,0:i),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
+     kernel(i,:,:)=matmul(invB0,num+DxBdot(:,:,i))
   end do
 
 
 end subroutine kernel_second_kind_trapz
+
 
 subroutine kernel_second_kind_simpson(lenTraj, dim_basis,dim_x, kernel, k0, B0, Bdot, DxBdot,dt)
   use lapackMod
@@ -295,22 +269,22 @@ subroutine kernel_second_kind_simpson(lenTraj, dim_basis,dim_x, kernel, k0, B0, 
   double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(out)::kernel
   double precision,dimension(dim_basis,dim_x),intent(in)::k0
   double precision,dimension(dim_basis,dim_basis),intent(in)::B0
-  double precision,dimension(0:lenTraj, dim_basis, dim_basis),intent(in)::Bdot
-  double precision,dimension(0:lenTraj, dim_basis,dim_x),intent(in)::DxBdot
+  double precision,dimension(dim_basis, dim_basis,0:lenTraj),intent(in)::Bdot
+  double precision,dimension(dim_basis,dim_x,0:lenTraj),intent(in)::DxBdot
   double precision,intent(in)::dt
   double precision,dimension(dim_basis,dim_basis)::invB0
   double precision,dimension(dim_basis,dim_x)::num
   integer::i
 
-  invB0=inv(B0+0.5*dt*Bdot(0,:,:)) ! Update this depending of integration rule
+  invB0=inv(B0+0.5*dt*Bdot(:,:,0)) ! Update this depending of integration rule
 
   kernel(0,:,:)=k0
-  kernel(1,:,:)=matmul(invB0,DxBdot(1,:,:)+0.5*dt*matmul(Bdot(1,:,:),kernel(0,:,:))) ! First point trapz rule
-  invB0=inv(B0+dt*Bdot(0,:,:)/3) ! Update this depending of integration rule
+  kernel(1,:,:)=matmul(invB0,DxBdot(:,:,1)+0.5*dt*matmul(Bdot(:,:,1),kernel(0,:,:))) ! First point trapz rule
+  invB0=inv(B0+dt*Bdot(:,:,0)/3) ! Update this depending of integration rule
 
   do i=2,lenTraj !! for i in range(1, lenTraj):
-     call simpson_integral(num,dt,i,Bdot(0:i,:,:),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
-     kernel(i,:,:)=matmul(invB0,num+DxBdot(i,:,:))
+     call simpson_integral(num,dt,i,Bdot(:,:,0:i),kernel(0:i,:,:),dim_basis,dim_x,dim_basis)
+     kernel(i,:,:)=matmul(invB0,num+DxBdot(:,:,i))
   end do
 
 end subroutine kernel_second_kind_simpson
