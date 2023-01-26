@@ -572,9 +572,9 @@ class Pos_gle_base(object):
             if self.force_coeff is None:
                 raise Exception("Mean force has not been computed.")
             coeffs = self.force_coeff
-        else:  # Check shape
-            if coeffs.shape != (self.N_basis_elt_force, self.dim_obs):
-                raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
+        # else:  # Check shape
+        #     if coeffs.shape != (self.N_basis_elt_force, self.dim_obs):
+        #         raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
         if self.eff_mass is None:
             self.compute_effective_mass(kT=kT)
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="pmf")
@@ -623,7 +623,7 @@ class Pos_gle_base(object):
         if coeffs_ker is None:
             coeffs_ker = self.kernel
         else:  # Check shape
-            if coeffs_ker.shape != self.kernel.shape:
+            if coeffs_ker.shape[1:] != self.kernel.shape[1:]:
                 raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs_ker.shape, self.kernel.shape))
 
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")

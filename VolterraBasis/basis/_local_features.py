@@ -160,7 +160,7 @@ class SmoothIndicatorFeatures(TransformerMixin):
         else:
             raise ValueError("Not valable boundary")
 
-    def fit(self, X, y=None, knots=None):
+    def fit(self, X, y=None):
         nsamples, dim = X.shape
         if dim > 1:
             raise ValueError("This basis does not support dimension higher than 1. Try to combine it using TensorialBasis2D")
