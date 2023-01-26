@@ -10,8 +10,8 @@ from .trajectories_handler import Trajectories_handler
 # from .pos_gle_fem import Pos_gle_fem
 # from .gfpe_instance import Pos_gfpe, Pos_gfpe_fem
 from .gle_integrate import Integrator_gle, Integrator_gle_const_kernel, KarhunenLoeveNoiseGenerator
-from .memory_fit import memory_fit, memory_fit_eval, memory_fit_kernel, memory_kernel_eval
-from .prony_fit import prony_inspect_data, prony_fit_times_serie, prony_fit_kernel, prony_series_eval, prony_series_kernel_eval
+from .fit_memory import memory_fit, memory_fit_eval, memory_fit_kernel, memory_kernel_eval
+from .fit_prony import prony_inspect_data, prony_fit_times_serie, prony_fit_kernel, prony_series_eval, prony_series_kernel_eval
 from .correlation import correlation_ND as correlation
 from . import basis
 from .mesh_utils import *
@@ -25,6 +25,13 @@ __all__ += ["memory_fit", "memory_fit_eval", "memory_fit_kernel", "memory_kernel
 __all__ += ["prony_fit_times_serie", "prony_series_eval", "prony_fit_kernel", "prony_series_kernel_eval", "prony_inspect_data"]
 # __all__ += ["Pos_gle_fem", "Pos_gfpe_fem"]
 # __all__ += ["Pos_gfpe"]
+
+# TODO:
+# Vérifier le code de corrs with noise
+# Passer gfpe en nouvelle version
+# Changer le code des examples
+# Changer le code de gle integrate pour prendre en entrée un model directement
+# Attaquer le problème de FEM
 
 
 def xframe(x, time, v=None, a=None, fix_time=False, round_time=1.0e-4, dt=-1):

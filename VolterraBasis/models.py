@@ -1,5 +1,6 @@
 import numpy as np
 import xarray as xr
+import warnings
 from scipy.integrate import simpson
 from .basis import describe_from_dim
 
@@ -94,12 +95,10 @@ class ModelBase(object):
 
         self.N_basis_elt = self.basis.n_output_features_
 
-    def _set_range_projection(self, rank_tol, B0):
+    def _set_range_projection(self, rank_tol, B0):  # TODO
         """
         Set and perfom the projection onto the range of the basis for kernel
         """
-        if self.verbose:
-            print("Projection on range space...")
         # Check actual rank of the matrix
         # Do SVD
         U, S, V = np.linalg.svd(B0, compute_uv=True, hermitian=True)
@@ -119,6 +118,7 @@ class ModelBase(object):
         else:
             print("No projection onto the range of the basis performed as basis is not deficient.")
             self.P_range = np.identity(self.N_basis_elt_kernel)
+        return self.P_range
 
     def basis_vector(self, xva, compute_for="corrs"):
         """
@@ -163,7 +163,7 @@ class ModelBase(object):
         dt = time[1] - time[0]
         E_force, E, _ = self.basis_vector(xva)
         if self.rank_projection:
-            E = np.einsum("kj,ij->ik", self.P_range, E)
+            E = np.einsum("kj,ij->ik", self.P_range, E)  # TODO
         force = xr.dot(E_force, xr.DataArray(self.force_coeff, dims=["dim_basis", "dim_x"]))
         if self.method in ["rect", "rectangular", "second_kind_rect"] or self.method is None:
             memory = memory_rect(self.kernel[:trunc_kernel], E, dt)
@@ -191,9 +191,9 @@ class ModelBase(object):
         dt = xva["time"].data[1] - xva["time"].data[0]
         E_force, E, _ = self.basis_vector(xva)
         if self.rank_projection:
-            E = np.einsum("kj,ij->ik", self.P_range, E)
+            E = np.einsum("kj,ij->ik", self.P_range, E)  # TODO
 
-        noise = xva[self.L_obs].to_numpy() - np.matmul(E_force, xr.DataArray(self.force_coeff, dims=["dim_basis", "dim_x"])).to_numpy()
+        noise = xva[self.L_obs].to_numpy() - xr.dot(E_force, xr.DataArray(self.force_coeff, dims=["dim_basis", "dim_x"])).to_numpy()
 
         if left_op is None:
             left_op = noise
@@ -218,7 +218,7 @@ class ModelBase(object):
             coeffs = self.force_coeff
         else:  # Check shape
             if coeffs.shape != (self.N_basis_elt_force, self.dim_obs):
-                raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
+                warnings.warn("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="force")
         return np.einsum("ik,kl->il", E, coeffs)  # Return the force as array (nb of evalution point x dim_obs)
 
@@ -236,14 +236,15 @@ class ModelBase(object):
             coeffs = self.force_coeff
         else:  # Check shape
             if coeffs.shape != (self.N_basis_elt_force, self.dim_obs):
-                raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
+                warnings.warn("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
         if self.eff_mass is None:
-            self.compute_effective_mass(kT=kT)
+            warnings.warn("Effective mass has not been computed, use effetive mass of 1.0")
+            self.eff_mass = np.identity(self.dim_x)
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="pmf")
         pmf = -1 * np.einsum("ik,kl->il", E, np.matmul(coeffs, self.eff_mass)) / kT
         return pmf - float(set_zero) * np.min(pmf)
 
-    def inv_mass_eval(self, x, coeffs=None, kT=1.0, set_zero=True):
+    def inv_mass_eval(self, x, coeffs=None, set_zero=True):
         """
         Compute free energy via integration of the mean force at points x.
         This assume that the effective mass is independent of the position.
@@ -310,14 +311,14 @@ class ModelBase(object):
             laplace[n, :, :] = simpson(np.einsum("i,ijk-> ijk", np.exp(-s * self.kernel_time[:, 0]), self.kernel), self.kernel_time[:, 0], axis=0)
         return s_range, laplace
 
-    def save_model(self):
+    def save_model(self):  # TODO
         """
         Return dictionnary version of the model than can be save to file
         """
 
         # On doit retourner coeffs de la force, le noyau mémoire, et de quoi générer la base
 
-    @classmethod
+    @classmethod  # TODO
     def load_model(save):
         """
         Create a model from a save

@@ -68,15 +68,14 @@ class Estimator_gle(object):
 
         self.trajs_data._do_check_obs(model_class.set_of_obs, self.model.L_obs)  # Check that we have in the trajectories what we need
 
-    def compute_gram(self, kT=1.0):
+    def compute_gram(self):
         if self.verbose:
             print("Calculate gram...")
-            print("Use kT:", kT)
         avg_gram = self.trajs_data.loop_over_trajs(self.trajs_data._compute_gram, self.model, gram_type="force")[0]
-        self.invgram = kT * np.linalg.pinv(avg_gram)
+        self.model.invgram = np.linalg.pinv(avg_gram)
         if self.verbose:
             print("Found inverse gram:", self.invgram)
-        return kT * avg_gram
+        return self.model
 
     def compute_kernel_gram(self):
         """
@@ -84,12 +83,10 @@ class Estimator_gle(object):
         """
         if self.verbose:
             print("Calculate kernel gram...")
-        self.kernel_gram = self.trajs_data.loop_over_trajs(self.trajs_data._compute_gram, self.model, gram_type="kernel")[0]
-        if self.rank_projection:
-            self.kernel_gram = np.einsum("lj,jk,mk->lm", self.model.P_range, self.kernel_gram, self.model.P_range)
-        return self.kernel_gram
-
-    # TODO:  changer le calcul de la masse effective (dépendante en position ou non) pour utiliser loop_over_traj
+        self.model.kernel_gram = self.trajs_data.loop_over_trajs(self.trajs_data._compute_gram, self.model, gram_type="kernel")[0]
+        if self.model.rank_projection:
+            self.model.kernel_gram = np.einsum("lj,jk,mk->lm", self.model.P_range, self.kernel_gram, self.model.P_range)
+        return self.model
 
     def compute_effective_mass(self):
         """
@@ -97,15 +94,12 @@ class Estimator_gle(object):
         """
         if self.verbose:
             print("Calculate effective mass...")
-        v2sum = 0.0
-        for i, xva in enumerate(self.xva_list):
-            v2sum += np.einsum("ik,ij->kj", xva["v"], xva["v"])
-        v2 = v2sum / self.weightsum
+        v2 = self.trajs_data.loop_over_trajs(self.trajs_data._compute_square_vel, self.model)[0]
         self.model.eff_mass = np.linalg.inv(v2)
 
         if self.verbose:
             print("Found effective mass:", self.eff_mass)
-        return self.eff_mass
+        return self.model
 
     def compute_pos_effective_mass(self):
         """
@@ -113,14 +107,9 @@ class Estimator_gle(object):
         """
         if self.verbose:
             print("Calculate kernel gram...")
-        pos_inv_mass = np.zeros((self.dim_x, self.N_basis_elt_force, self.dim_x))
-        avg_gram = np.zeros((self.N_basis_elt_force, self.N_basis_elt_force))
-        for weight, xva in zip(self.weights, self.xva_list):
-            E = self.basis_vector(xva, compute_for="force")
-            pos_inv_mass += np.einsum("ik,ij,il->klj", xva["v"], xva["v"], E) / self.weightsum
-            avg_gram += np.matmul(E.T, E) / self.weightsum
-        self.inv_mass_coeff = np.dot(np.linalg.inv(avg_gram), pos_inv_mass)
-        return self.inv_mass_coeff
+        pos_inv_mass, avg_gram = self.trajs_data.loop_over_trajs(self.trajs_data._compute_square_vel_pos, self.model)
+        self.model.inv_mass_coeff = np.dot(np.linalg.inv(avg_gram), pos_inv_mass)
+        return self.model
 
     def compute_mean_force(self):
         """
@@ -151,16 +140,19 @@ class Estimator_gle(object):
         self.bkdxcorrw, self.dotbkdxcorrw, self.bkbkcorrw, self.dotbkbkcorrw = self.trajs_data.loop_over_trajs(self.trajs_data._correlation_all, self.model)
 
         if self.model.rank_projection:
-            self.model._set_range_projection(rank_tol, self.bkbkcorrw[0, :, :])
-            tempbkbkcorrw = np.einsum("ijk,mk->ijm", self.bkbkcorrw, self.model.P_range)
-            self.bkbkcorrw = np.einsum("lj,ijk->ilk", self.model.P_range, tempbkbkcorrw)
+            if self.verbose:
+                print("Projection on range space...")
+            P_mat = self.model._set_range_projection(rank_tol, self.bkbkcorrw.isel(time_trunc=0))
+            P_range = xr.DataArray(P_mat, dims=["dim_basis", "dim_basis_old"])
+            P_range_tranpose = xr.DataArray(P_mat.T, dims=["dim_basis_old'", "dim_basis'"])
+            tempbkbkcorrw = xr.dot(P_range, self.bkbkcorrw.rename({"dim_basis": "dim_basis_old"}))
+            self.bkbkcorrw = xr.dot(P_range_tranpose, tempbkbkcorrw.rename({"dim_basis'": "dim_basis_old'"}))
             # self.bkbkcorrw = np.einsum("lj,ijk,mk->ilm", self.model.P_range, self.bkbkcorrw, self.model.P_range)
-            self.bkdxcorrw = np.einsum("kj,ijd->ikd", self.model.P_range, self.bkdxcorrw)
+            self.bkdxcorrw = xr.dot(P_range, self.bkdxcorrw.rename({"dim_basis": "dim_basis_old"}))
             if self.dotbkdxcorrw is not None:
-                self.dotbkdxcorrw = np.einsum("kj,ijd->ikd", self.model.P_range, self.dotbkdxcorrw)
+                self.dotbkdxcorrw = xr.dot(P_range, self.dotbkdxcorrw.rename({"dim_basis": "dim_basis_old"}))
             if isinstance(self.dotbkbkcorrw, xr.DataArray):
-                self.dotbkbkcorrw = np.einsum("lj,ijk,mk->ilm", self.model.P_range, self.dotbkbkcorrw, self.model.P_range)
-
+                self.dotbkbkcorrw = xr.dot(P_range_tranpose, P_range, self.dotbkbkcorrw.rename({"dim_basis": "dim_basis_old", "dim_basis'": "dim_basis_old'"}))
         if self.saveall:
             np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(self.bkdxcorrw.shape[0], -1))
             np.savetxt(self.prefix + self.corrsfile, self.bkbkcorrw.reshape(self.bkbkcorrw.shape[0], -1))
@@ -250,3 +242,6 @@ class Estimator_gle(object):
         #     # res_int[n, :] = -1 * simpson(to_integrate, dx=dt, axis=0, even="last")
         #     res_int += np.einsum("jk,ik->ij", self.bkbkcorrw[0, :, :], self.kernel)
         return time, res_int
+
+    def compute_corrs_w_noise(self, left_op=None):  # TODO à adapter à ce que j'ai du faire pour le calcul des décompositions et à implémenter dans trajs_handler
+        return self.trajs_data.loop_over_trajs(self.trajs_data._corrs_w_noise, self.model, left_op=left_op)

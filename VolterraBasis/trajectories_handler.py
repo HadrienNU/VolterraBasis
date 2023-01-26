@@ -1,12 +1,9 @@
 import numpy as np
 import xarray as xr
-from scipy.integrate import trapezoid, simpson
 from scipy.stats import describe
 
 from .basis import sum_describe
 
-from .fkernel import kernel_first_kind_trapz, kernel_first_kind_rect, kernel_first_kind_midpoint, kernel_second_kind_rect, kernel_second_kind_trapz
-from .fkernel import memory_rect, memory_trapz, corrs_rect, corrs_trapz
 from .correlation import correlation_1D, correlation_ND
 
 
@@ -149,6 +146,23 @@ class Trajectories_handler(object):
         return (avg_gram,)
 
     @staticmethod
+    def _compute_square_vel(weight, xva, model, **kwargs):
+        """
+        Squared velocity for effective masse
+        """
+        return (xr.dot(xva["v"], xva["v"].rename({"dim_x": "dim_x'"})) / weight,)
+
+    @staticmethod
+    def _compute_square_vel_pos(weight, xva, model, **kwargs):
+        """
+        Do the needed scalar product for one traj
+        """
+        E = model.basis_vector(xva, compute_for="force")
+        avg_disp = xr.dot(E, xr.dot(xva["v"], xva["v"].rename({"dim_x": "dim_x'"}))) / weight
+        avg_gram = xr.dot(E, E.rename({"dim_basis": "dim_basis'"})) / weight
+        return avg_disp, avg_gram
+
+    @staticmethod
     def _correlation_all(weight, xva, model, method="fft", vectorize=False, second_order_method=True, **kwargs):
         """
         Do the correlation
@@ -181,39 +195,3 @@ class Trajectories_handler(object):
             dotbkdxcorrw = xr.dot(dE, xva[model.L_obs], ortho_xva) / weight  # Maybe reshape to add a dimension of size 1 and name time_trunc
             dotbkbkcorrw = np.array([[0.0]])
         return bkdxcorrw, dotbkdxcorrw, bkbkcorrw, dotbkbkcorrw
-
-    # @staticmethod
-    # def _correlation_vectorize(weight, xva, model, method="fft"):
-    #     """
-    #     Vectorized version of the correlation
-    #     Return 4 array with dimensions
-    #
-    #     bkbkcorrw :(trunc_ind, N_basis_elt_kernel, N_basis_elt_kernel)
-    #     bkdxcorrw :(trunc_ind, N_basis_elt_kernel, dim_obs)
-    #     dotbkdxcorrw :(trunc_ind, N_basis_elt_kernel, dim_obs)
-    #     dotbkbkcorrw :(trunc_ind, N_basis_elt_kernel, N_basis_elt_kernel)
-    #
-    #     """
-    #     if method == "direct":
-    #         func = correlation_direct_1D
-    #     else:
-    #         func = correlation_1D
-    #     E_force, E, dE = model.basis_vector(xva)
-    #     force = np.matmul(E_force, model.force_coeff)
-    #     dim_obs = force.shape[-1]
-    #     N_basis_elt_kernel = E.shape[1]
-    #     # On va le faire avec un apply u_func et un vectorize
-    #     bkbkcorrw = np.zeros((model.trunc_ind, N_basis_elt_kernel, N_basis_elt_kernel))
-    #     bkdxcorrw = np.zeros((model.trunc_ind, N_basis_elt_kernel, dim_obs))
-    #
-    #     dotbkdxcorrw = np.zeros((model.trunc_ind, N_basis_elt_kernel, dim_obs))
-    #     dotbkbkcorrw = np.zeros((model.trunc_ind, N_basis_elt_kernel, N_basis_elt_kernel))
-    #
-    #     for n in range(N_basis_elt_kernel):
-    #         for d in range(model.dim_obs):
-    #             bkdxcorrw[:, n, d] += weight * correlation_1D(E[:, n], xva[model.L_obs].data[:, d] - force[:, d], trunc=model.trunc_ind)  # Correlate derivative of observable minus mean value
-    #             dotbkdxcorrw[:, n, d] += weight * correlation_1D(dE[:, n], xva[model.L_obs].data[:, d] - force[:, d], trunc=model.trunc_ind)
-    #         for m in range(N_basis_elt_kernel):
-    #             bkbkcorrw[:, n, m] += weight * correlation_1D(E[:, n], E[:, m], trunc=model.trunc_ind)
-    #             dotbkbkcorrw[:, n, m] += weight * correlation_1D(dE[:, n], E[:, m], trunc=model.trunc_ind)
-    #     return bkdxcorrw, dotbkdxcorrw, bkbkcorrw, dotbkbkcorrw

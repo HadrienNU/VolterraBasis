@@ -9,7 +9,7 @@ import numpy as np
 import scipy.optimize
 import scipy.integrate
 
-from .prony_fit import prony_series_eval, prony_fit_times_serie
+from .fit_prony import prony_series_eval, prony_fit_times_serie
 
 
 def asymptotic(x, a, b):

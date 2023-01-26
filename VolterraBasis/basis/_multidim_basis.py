@@ -61,7 +61,7 @@ class TensorialBasis2D(TransformerMixin):
         hess_cross = temp_arr_cross.reshape(nsamples, -1, *temp_arr_cross.shape[3:])
         temp_arr_2 = np.einsum("nk...,nl->nkl...", self.b1.hessian(X[:, slice(0, 1)]), self.b2.basis(X[:, slice(1, 2)]))
         hess_2 = temp_arr_2.reshape(nsamples, -1, *temp_arr_2.shape[3:])
-        print(hess_1.shape, hess_cross.shape, hess_2.shape)
+        # print(hess_1.shape, hess_cross.shape, hess_2.shape)
         return np.concatenate((np.concatenate((hess_2, hess_cross), axis=-2), np.concatenate((hess_cross, hess_1), axis=-2)), axis=-1)
 
     def antiderivative(self, X, order=1):

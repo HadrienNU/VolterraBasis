@@ -75,7 +75,7 @@ class PolynomialFeatures(TransformerMixin):
             istart = n * dim
             iend = (n + 1) * dim
             features[:, istart:iend] = self.polynom.basis(n)(X)
-        print("Basis", X.shape, features.shape)
+        # print("Basis", X.shape, features.shape)
         return features
 
     def deriv(self, X, deriv_order=1):
