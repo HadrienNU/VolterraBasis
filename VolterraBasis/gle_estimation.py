@@ -98,7 +98,7 @@ class Estimator_gle(object):
         self.model.eff_mass = np.linalg.inv(v2)
 
         if self.verbose:
-            print("Found effective mass:", self.eff_mass)
+            print("Found effective mass:", self.model.eff_mass)
         return self.model
 
     def compute_pos_effective_mass(self):

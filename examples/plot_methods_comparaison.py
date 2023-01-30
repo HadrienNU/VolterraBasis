@@ -26,12 +26,11 @@ for i in range(1, trj.shape[1]):
 
 
 Nsplines = 10
-mymem = vb.Pos_gle(xva_list, bf.BSplineFeatures(Nsplines), trunc=10, kT=1.0, saveall=False)
+estimator = vb.Estimator_gle(vb.Trajectories_handler(xva_list), vb.Pos_gle, bf.BSplineFeatures(Nsplines), trunc=10, saveall=False)
 # mymem = vb.Pos_gle_overdamped(xva_list, bf.BSplineFeatures(Nsplines, remove_const=False), trunc=10, kT=1.0, saveall=False)
-mymem.compute_mean_force()
-harmonic_coeffs = -1 * mymem.force_coeff[0]
+estimator.compute_mean_force()
 # print(mymem.force_coeff)
-mymem.compute_corrs()
+estimator.compute_corrs()
 
 fig_kernel, axs = plt.subplots(1, 1)
 # # # Kernel plot
@@ -43,8 +42,8 @@ axs.set_ylim([-500, 2000])
 axs.grid()
 # Iterate over method for comparaison
 for method in ["rectangular", "midpoint", "midpoint_w_richardson", "trapz", "second_kind_rect", "second_kind_trapz"]:
-    mymem.compute_kernel(method=method)
-    time_ker, kernel_vb = mymem.kernel_eval([2.0])
+    model = estimator.compute_kernel(method=method)
+    time_ker, kernel_vb = model.kernel_eval([2.0])
     axs.plot(time_ker, kernel_vb[:, :, 0, 0], "-o", label=method)
 axs.legend(loc="best")
 

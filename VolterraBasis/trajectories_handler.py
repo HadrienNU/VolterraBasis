@@ -184,7 +184,6 @@ class Trajectories_handler(object):
         E_force, E, dE = model.basis_vector(xva)
         # print(E_force, model.force_coeff)
         ortho_xva = xva[model.L_obs] - xr.dot(E_force, xr.DataArray(model.force_coeff, dims=["dim_basis", "dim_x"]))  # TODO
-
         bkdxcorrw = xr.apply_ufunc(func, E, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
         bkbkcorrw = xr.apply_ufunc(correlation_ND, E, input_core_dims=[["time"]], output_core_dims=[["dim_basis'", "time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
         if second_order_method:
@@ -195,3 +194,10 @@ class Trajectories_handler(object):
             dotbkdxcorrw = xr.dot(dE, xva[model.L_obs], ortho_xva) / weight  # Maybe reshape to add a dimension of size 1 and name time_trunc
             dotbkbkcorrw = np.array([[0.0]])
         return bkdxcorrw, dotbkdxcorrw, bkbkcorrw, dotbkbkcorrw
+
+    @staticmethod
+    def _corrs_w_noise(weight, xva, model, left_op=None, **kwargs):
+        """
+        Do the needed scalar product for one traj
+        """
+        return model.compute_corrs_w_noise(xva, left_op)

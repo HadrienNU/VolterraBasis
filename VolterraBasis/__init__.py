@@ -27,7 +27,6 @@ __all__ += ["prony_fit_times_serie", "prony_series_eval", "prony_fit_kernel", "p
 # __all__ += ["Pos_gfpe"]
 
 # TODO:
-# Vérifier le code de corrs with noise
 # Passer gfpe en nouvelle version
 # Changer le code des examples
 # Changer le code de gle integrate pour prendre en entrée un model directement

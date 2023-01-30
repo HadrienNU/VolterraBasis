@@ -201,9 +201,9 @@ class ModelBase(object):
             left_op = xva[left_op]
 
         if self.method in ["rect", "rectangular", "second_kind_rect"] or self.method is None:
-            return self.kernel_time, corrs_rect(noise, self.kernel, E, left_op, dt)
+            return self.time_kernel, corrs_rect(noise, self.kernel, E, left_op, dt)
         elif self.method == "trapz" or self.method == "second_kind_trapz":
-            return self.kernel_time[:-1], corrs_trapz(noise, self.kernel, E, left_op, dt)
+            return self.time_kernel[:-1], corrs_trapz(noise, self.kernel, E, left_op, dt)
         else:
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
 
@@ -308,7 +308,7 @@ class ModelBase(object):
         s_range = np.linspace(s_start, s_end, n_points)
         laplace = np.zeros((n_points, self.kernel.shape[1], self.kernel.shape[2]))
         for n, s in enumerate(s_range):
-            laplace[n, :, :] = simpson(np.einsum("i,ijk-> ijk", np.exp(-s * self.kernel_time[:, 0]), self.kernel), self.kernel_time[:, 0], axis=0)
+            laplace[n, :, :] = simpson(np.einsum("i,ijk-> ijk", np.exp(-s * self.time_kernel[:, 0]), self.kernel), self.time_kernel[:, 0], axis=0)
         return s_range, laplace
 
     def save_model(self):  # TODO
@@ -493,7 +493,7 @@ class Pos_gle_const_kernel(ModelBase):
                 grad[:, i, i] = 1.0
             return grad  # TODO: update to xarray
         elif compute_for == "corrs":
-            return bk, xva["v"], xva["a"]
+            return bk, xva["v"].rename({"dim_x": "dim_basis"}), xva["a"].rename({"dim_x": "dim_basis"})
         else:
             raise ValueError("Basis evaluation goal not specified")
 
@@ -560,7 +560,7 @@ class Pos_gle_hybrid(ModelBase):
         """
         if self.kernel is None:
             raise Exception("Kernel has not been computed.")
-        return self.kernel_time, self.kernel[:, 0, :]
+        return self.time_kernel, self.kernel[:, 0, :]
 
     def kernel_eval(self, x):
         """
@@ -571,7 +571,7 @@ class Pos_gle_hybrid(ModelBase):
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")
         if self.rank_projection:
             E = np.einsum("kj,ijd->ikd", self.P_range, E)
-        return self.kernel_time, np.einsum("jkd,ikl->ijld", E, self.kernel[:, 1:, :])  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x)
+        return self.time_kernel, np.einsum("jkd,ikl->ijld", E, self.kernel[:, 1:, :])  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x)
 
 
 class Pos_gle_overdamped(ModelBase):
