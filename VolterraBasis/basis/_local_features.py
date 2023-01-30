@@ -227,7 +227,6 @@ class SmoothIndicatorFeatures(TransformerMixin):
         else:
             features[(Ellipsis, slice(self.n_states, self.n_states + 1)) + (0,) * deriv_order] = der_next
         return features
-        return features
 
     def hessian(self, X):
         return self.deriv(X, deriv_order=2)
