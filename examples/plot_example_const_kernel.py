@@ -24,7 +24,7 @@ for i in range(1, trj.shape[1]):
     xva_list.append(xvaf)
 
 Nsplines = 10
-estimator = vb.Estimator_gle(vb.Trajectories_handler(xva_list), vb.Pos_gle_const_kernel, bf.BSplineFeatures(Nsplines), trunc=10, saveall=False)
+estimator = vb.Estimator_gle(xva_list, vb.Pos_gle_const_kernel, bf.BSplineFeatures(Nsplines), trunc=10, saveall=False)
 # mymem = vb.Pos_gle(xva_list, bf.PolynomialFeatures(deg=1), trunc=10, kT=1.0, saveall=False)
 # mymem = vb.Pos_gle(xva_list, bf.LinearFeatures(), trunc=10, kT=1.0, saveall=False)
 print("Dimension of observable", estimator.model.dim_x)

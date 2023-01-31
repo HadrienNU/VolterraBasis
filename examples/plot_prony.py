@@ -26,7 +26,7 @@ for i in range(1, trj.shape[1]):
 
 Nsplines = 10
 
-estimator = vb.Estimator_gle(vb.Trajectories_handler(xva_list), vb.Pos_gle_const_kernel, bf.BSplineFeatures(Nsplines), trunc=10, saveall=False)
+estimator = vb.Estimator_gle(xva_list, vb.Pos_gle_const_kernel, bf.BSplineFeatures(Nsplines), trunc=10, saveall=False)
 # mymem = vb.Pos_gle_overdamped(xva_list, bf.BSplineFeatures(Nsplines, remove_const=False), trunc=10, kT=1.0, saveall=False)
 estimator.compute_mean_force()
 estimator.compute_corrs()

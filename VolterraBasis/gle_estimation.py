@@ -1,6 +1,11 @@
 import numpy as np
 import xarray as xr
 from scipy.integrate import trapezoid
+from scipy.stats import describe
+
+from .basis import sum_describe
+
+from .correlation import correlation_1D, correlation_ND
 
 from .fkernel import kernel_first_kind_trapz, kernel_first_kind_rect, kernel_first_kind_midpoint, kernel_second_kind_rect, kernel_second_kind_trapz
 
@@ -11,7 +16,7 @@ class Estimator_gle(object):
     holding all data and the extracted memory kernels.
     """
 
-    def __init__(self, trajs_data, model_class, basis, trunc=1.0, L_obs=None, saveall=True, prefix="", verbose=True, **kwargs):
+    def __init__(self, xva_arg, model_class, basis, trunc=1.0, L_obs=None, saveall=True, prefix="", verbose=True, **kwargs):
         """
         Create an instance of the Pos_gle class.
 
@@ -50,28 +55,113 @@ class Estimator_gle(object):
         self.dcorrsdxfile = "dE_a-u_corrs.txt"
         self.kernelfile = "kernel.txt"
 
-        self.trajs_data = trajs_data
+        self.data_describe = None
+
+        self._do_check(xva_arg)  # Do some check on the trajectories
+
+        # Save trajectory properties
+        if self.xva_list is None:
+            return
+
+        # processing input arguments
+        self.weights = np.array([xva["time"].shape[0] for xva in self.xva_list], dtype=int)  # Should be the various lenght of trajectory
+        self.weightsum = np.sum(self.weights)
+        if self.verbose:
+            print("Found trajectories with the following lengths:")
+            print(self.weights)
+
+        self.loop_over_trajs = self._loop_over_trajs_serial
 
         if L_obs is None:  # Default value given by the class of the model
             L_obs = model_class.set_of_obs[-1]
 
-        dim_x = self.trajs_data.xva_list[0].dims["dim_x"]
-        dim_obs = self.trajs_data.xva_list[0][L_obs].shape[1]
-        self.dt = self.trajs_data.xva_list[0].attrs["dt"]
+        dim_x = self.xva_list[0].dims["dim_x"]
+        dim_obs = self.xva_list[0][L_obs].shape[1]
+        self.dt = self.xva_list[0].attrs["dt"]
 
-        trunc_ind = self.trajs_data._compute_trunc_ind(trunc)
+        trunc_ind = self._compute_trunc_ind(trunc)
 
         # Fit basis from some description of the data
-        describe_data = self.trajs_data.describe_data()
+        describe_data = self.describe_data()
 
         self.model = model_class(basis, self.dt, dim_x=dim_x, dim_obs=dim_obs, trunc_ind=trunc_ind, L_obs=L_obs, describe_data=describe_data)
 
-        self.trajs_data._do_check_obs(model_class.set_of_obs, self.model.L_obs)  # Check that we have in the trajectories what we need
+        self._do_check_obs(model_class.set_of_obs, self.model.L_obs)  # Check that we have in the trajectories what we need
+
+    def _do_check(self, xva_arg):
+        if xva_arg is not None:
+            if isinstance(xva_arg, xr.Dataset):
+                self.xva_list = [xva_arg]
+            else:
+                self.xva_list = xva_arg
+            for xva in self.xva_list:
+                if "time" not in xva.dims:
+                    raise Exception("Time is not a coordinate. Please provide dataset with time, " "or an iterable collection (i.e. list) " "of dataset with time.")
+                if "dt" not in xva.attrs:
+                    raise Exception("Timestep not in dataset attrs")
+        else:
+            self.xva_list = None
+
+    def _do_check_obs(self, set_of_obs, L_obs):
+        for xva in self.xva_list:
+            for col in set_of_obs:
+                if col not in xva.data_vars:
+                    raise Exception("Please provide time,{} dataset, " "or an iterable collection (i.e. list) " "of time,{} dataset.".format(set_of_obs, set_of_obs))
+                if L_obs not in xva.data_vars:
+                    raise Exception("Please provide dataset that include {} as variable .".format(L_obs))
+
+    def _compute_trunc_ind(self, trunc):
+        lastinds = np.array([xva["time"][-1] for xva in self.xva_list])
+        smallest = np.min(lastinds)
+        if smallest < trunc:
+            if self.verbose:
+                print("Warning: Found a trajectory shorter than " "the argument trunc. Override.")
+            trunc = smallest
+        # Find index of the time truncation
+        self.trunc_ind = (self.xva_list[0]["time"] <= trunc).sum().data
+        if self.verbose:
+            print("Trajectories are truncated at lenght {} for dynamic analysis".format(self.trunc_ind))
+        return self.trunc_ind
+
+    def describe_data(self):
+        """
+        Return a description of the data
+        """
+        # Prévoir la sauvegarde du résultats pour 1) ne pas avoir à la calculer à chaque fois 2) pouvoir le sauvegarder
+        if self.data_describe is None:
+            describe_set = [describe(xva["x"].data) for xva in self.xva_list]
+            self.data_describe = describe_set[0]
+            for des_data in describe_set[1:]:
+                self.data_describe = sum_describe(self.data_describe, des_data)
+        return self.data_describe
+
+    def to_gfpe(self, model=None):
+        """
+        Update trajectories to compute derivative of the basis function
+        """
+        if model is None:
+            model = self.model
+        for i in range(len(self.xva_list)):
+            _, _, dE = self.model.basis_vector(self.xva_list[i])
+            self.xva_list[i].update({"dE": (["time", "dim_dE"], dE)})
+
+    def _loop_over_trajs_serial(self, func, model, **kwargs):
+        """
+        A generator for iteration over trajectories
+        """
+        # Et voir alors pour faire une version parallélisé (en distribué)
+        array_res = [func(weight, xva, model, **kwargs) for weight, xva in zip(self.weights, self.xva_list)]
+        # print(array_res)
+        res = [0.0] * len(array_res[0])
+        for weight, single_res in zip(self.weights, array_res):
+            for i, arr in enumerate(single_res):
+                res[i] += arr * weight / self.weightsum
+        return res
 
     def compute_gram(self):
         if self.verbose:
             print("Calculate gram...")
-        avg_gram = self.trajs_data.loop_over_trajs(self.trajs_data._compute_gram, self.model, gram_type="force")[0]
+        avg_gram = self.loop_over_trajs(self._compute_gram, self.model, gram_type="force")[0]
         self.model.invgram = np.linalg.pinv(avg_gram)
         if self.verbose:
             print("Found inverse gram:", self.invgram)
@@ -83,7 +173,7 @@ class Estimator_gle(object):
         """
         if self.verbose:
             print("Calculate kernel gram...")
-        self.model.kernel_gram = self.trajs_data.loop_over_trajs(self.trajs_data._compute_gram, self.model, gram_type="kernel")[0]
+        self.model.kernel_gram = self.loop_over_trajs(self._compute_gram, self.model, gram_type="kernel")[0]
         if self.model.rank_projection:
             self.model.kernel_gram = np.einsum("lj,jk,mk->lm", self.model.P_range, self.kernel_gram, self.model.P_range)
         return self.model
@@ -94,7 +184,7 @@ class Estimator_gle(object):
         """
         if self.verbose:
             print("Calculate effective mass...")
-        v2 = self.trajs_data.loop_over_trajs(self.trajs_data._compute_square_vel, self.model)[0]
+        v2 = self.loop_over_trajs(self._compute_square_vel, self.model)[0]
         self.model.eff_mass = np.linalg.inv(v2)
 
         if self.verbose:
@@ -107,7 +197,7 @@ class Estimator_gle(object):
         """
         if self.verbose:
             print("Calculate kernel gram...")
-        pos_inv_mass, avg_gram = self.trajs_data.loop_over_trajs(self.trajs_data._compute_square_vel_pos, self.model)
+        pos_inv_mass, avg_gram = self.loop_over_trajs(self._compute_square_vel_pos, self.model)
         self.model.inv_mass_coeff = np.dot(np.linalg.inv(avg_gram), pos_inv_mass)
         return self.model
 
@@ -117,7 +207,7 @@ class Estimator_gle(object):
         """
         if self.verbose:
             print("Calculate mean force...")
-        avg_disp, avg_gram = self.trajs_data.loop_over_trajs(self.trajs_data._projection_on_basis, self.model)
+        avg_disp, avg_gram = self.loop_over_trajs(self._projection_on_basis, self.model)
         # print(avg_gram)
         self.model.force_coeff = np.matmul(np.linalg.inv(avg_gram.data), avg_disp.data)  # TODO
         return self.model
@@ -137,7 +227,7 @@ class Estimator_gle(object):
             print("Calculate correlation functions...")
         if self.model.force_coeff is None:
             raise Exception("Mean force has not been computed.")
-        self.bkdxcorrw, self.dotbkdxcorrw, self.bkbkcorrw, self.dotbkbkcorrw = self.trajs_data.loop_over_trajs(self.trajs_data._correlation_all, self.model)
+        self.bkdxcorrw, self.dotbkdxcorrw, self.bkbkcorrw, self.dotbkbkcorrw = self.loop_over_trajs(self._correlation_all, self.model)
 
         if self.model.rank_projection:
             if self.verbose:
@@ -244,4 +334,85 @@ class Estimator_gle(object):
         return time, res_int
 
     def compute_corrs_w_noise(self, left_op=None):  # TODO à adapter à ce que j'ai du faire pour le calcul des décompositions et à implémenter dans trajs_handler
-        return self.trajs_data.loop_over_trajs(self.trajs_data._corrs_w_noise, self.model, left_op=left_op)
+        return self.loop_over_trajs(self._corrs_w_noise, self.model, left_op=left_op)
+
+    @staticmethod
+    def _projection_on_basis(weight, xva, model, gram_type="force", **kwargs):
+        """
+        Do the needed scalar product for one traj
+        Return 2 array with dimension:
+
+        avg_disp: (N_basis_elt_force, dim_obs))
+        avg_gram: (N_basis_elt_force, N_basis_elt_force)
+        """
+        E = model.basis_vector(xva, compute_for=gram_type)
+        avg_disp = xr.dot(E, xva[model.L_obs]) / weight
+        avg_gram = xr.dot(E, E.rename({"dim_basis": "dim_basis'"})) / weight
+        # print(E)
+        return avg_disp, avg_gram
+
+    @staticmethod
+    def _compute_gram(weight, xva, model, gram_type="force", **kwargs):
+        """
+        Do the needed scalar product for one traj
+        """
+        E = model.basis_vector(xva, compute_for=gram_type)
+        avg_gram = xr.dot(E, E.rename({"dim_basis": "dim_basis'"})) / weight
+        return (avg_gram,)
+
+    @staticmethod
+    def _compute_square_vel(weight, xva, model, **kwargs):
+        """
+        Squared velocity for effective masse
+        """
+        return (xr.dot(xva["v"], xva["v"].rename({"dim_x": "dim_x'"})) / weight,)
+
+    @staticmethod
+    def _compute_square_vel_pos(weight, xva, model, **kwargs):
+        """
+        Do the needed scalar product for one traj
+        """
+        E = model.basis_vector(xva, compute_for="force")
+        avg_disp = xr.dot(E, xr.dot(xva["v"], xva["v"].rename({"dim_x": "dim_x'"}))) / weight
+        avg_gram = xr.dot(E, E.rename({"dim_basis": "dim_basis'"})) / weight
+        return avg_disp, avg_gram
+
+    @staticmethod
+    def _correlation_all(weight, xva, model, method="fft", vectorize=False, second_order_method=True, **kwargs):
+        """
+        Do the correlation
+        Return 4 array with dimensions
+
+        bkbkcorrw :(trunc_ind, N_basis_elt_kernel, N_basis_elt_kernel)
+        bkdxcorrw :(trunc_ind, N_basis_elt_kernel, dim_obs)
+        dotbkdxcorrw :(trunc_ind, N_basis_elt_kernel, dim_obs)
+        dotbkbkcorrw :(trunc_ind, N_basis_elt_kernel, N_basis_elt_kernel)
+        """
+        if method == "fft" and vectorize:
+            func = correlation_1D
+        # elif method == "direct" and not vectorize:
+        #     func = correlation_direct_ND
+        # elif method == "direct" and vectorize:
+        #     func = correlation_direct_1D
+        else:
+            func = correlation_ND
+        E_force, E, dE = model.basis_vector(xva)
+        # print(E_force, model.force_coeff)
+        ortho_xva = xva[model.L_obs] - xr.dot(E_force, xr.DataArray(model.force_coeff, dims=["dim_basis", "dim_x"]))  # TODO
+        bkdxcorrw = xr.apply_ufunc(func, E, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
+        bkbkcorrw = xr.apply_ufunc(correlation_ND, E, input_core_dims=[["time"]], output_core_dims=[["dim_basis'", "time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
+        if second_order_method:
+            dotbkdxcorrw = xr.apply_ufunc(func, dE, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
+            dotbkbkcorrw = xr.apply_ufunc(func, dE.rename({"dim_basis": "dim_basis'"}), E, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
+        else:
+            # We can compute only the first element then, that is faster
+            dotbkdxcorrw = xr.dot(dE, xva[model.L_obs], ortho_xva) / weight  # Maybe reshape to add a dimension of size 1 and name time_trunc
+            dotbkbkcorrw = np.array([[0.0]])
+        return bkdxcorrw, dotbkdxcorrw, bkbkcorrw, dotbkbkcorrw
+
+    @staticmethod
+    def _corrs_w_noise(weight, xva, model, left_op=None, **kwargs):
+        """
+        Do the needed scalar product for one traj
+        """
+        return model.compute_corrs_w_noise(xva, left_op)

@@ -26,11 +26,13 @@ for i in range(1, trj.shape[1]):
 basis_indicator = bf.SmoothIndicatorFeatures([[1.4, 1.5]], "tricube")
 basis_indicator = bf.SmoothIndicatorFeatures([[1.0, 1.1], [1.4, 1.5], [1.6, 1.7], [2.0, 2.1]], "tricube")
 basis_splines = bf.BSplineFeatures(10, remove_const=False)
-mymem = vb.Pos_gfpe(xva_list, basis_indicator, trunc=10, saveall=False)
 
-mymem.compute_mean_force()
-mymem.compute_corrs()
-mymem.compute_kernel(method="trapz")
+estimator = vb.Estimator_gle(xva_list, vb.Pos_gle, basis_indicator, trunc=10, saveall=False)
+estimator.to_gfpe()
+
+estimator.compute_mean_force()
+estimator.compute_corrs()
+model = estimator.compute_kernel(method="trapz")
 
 
 fig_kernel, axs = plt.subplots(1, 1)
@@ -40,26 +42,26 @@ axs.set_xscale("log")
 axs.set_xlabel("$t$")
 axs.set_ylabel("$\\Gamma$")
 axs.grid()
-# axs.plot(mymem.time, mymem.kernel[:, 0, 0], "-x")
-# axs.plot(mymem.time, mymem.kernel[:, 0, 1], "-x")
-axs.plot(mymem.time, mymem.kernel[:, 2, :], "-x")
-axs.plot(mymem.time, mymem.kernel[:, :, 2], "-x")
+# axs.plot(model.time, model.kernel[:, 0, 0], "-x")
+# axs.plot(model.time, model.kernel[:, 0, 1], "-x")
+axs.plot(model.time_kernel, model.kernel[:, 2, :], "-x")
+axs.plot(model.time_kernel, model.kernel[:, :, 2], "-x")
 
 
-occ = mymem.occupations()
+occ = estimator.occupations()
 
-p0 = np.zeros(mymem.dim_obs)
+p0 = np.zeros(model.dim_obs)
 p0[0] = 1
 
-t_new, p_t = mymem.solve_gfpe(15000, method="trapz", p0=p0)  # , absorbing_states=-1)
+t_new, p_t = model.solve_gfpe(15000, method="trapz", p0=p0)  # , absorbing_states=-1)
 
 fig_pt = plt.figure("Probability of time")
 plt.grid()
 plt.plot(t_new, p_t[:, :], "-x")
-plt.scatter(t_new[-1] * np.ones(mymem.dim_obs), occ)  # Plot occupations that should be long time limit
+plt.scatter(t_new[-1] * np.ones(model.dim_obs), occ)  # Plot occupations that should be long time limit
 
-t_num = np.arange(mymem.trunc_ind) * (t_new[1] - t_new[0])
-p_t_num = np.einsum("ikj, kl, l->ij", mymem.bkbkcorrw, np.diag(1.0 / occ), p0)
+t_num = np.arange(model.trunc_ind) * (t_new[1] - t_new[0])
+p_t_num = np.einsum("ikj, kl, l->ij", estimator.bkbkcorrw, np.diag(1.0 / occ), p0)
 
 plt.plot(t_num, p_t_num, "--")
 
@@ -72,7 +74,7 @@ ax_anim.grid()
 time_text = ax_anim.text(0.85, 0.95, "0.0", horizontalalignment="left", verticalalignment="top", transform=ax_anim.transAxes)
 
 xrange = np.linspace(0.8, 3.0, 150)
-E_eval_unnorm = mymem.basis_vector(vb.pos_gle_base._convert_input_array_for_evaluation(xrange, 1), compute_for="force")
+E_eval_unnorm = model.basis_vector(vb.models._convert_input_array_for_evaluation(xrange, 1), compute_for="force")
 norm_E = np.trapz(E_eval_unnorm, x=xrange, axis=0)
 E_eval = E_eval_unnorm @ np.diag(norm_E)
 

@@ -5,7 +5,6 @@ from ._version import __version__
 
 from .models import Pos_gle, Pos_gle_with_friction, Pos_gle_no_vel_basis, Pos_gle_const_kernel, Pos_gle_hybrid, Pos_gle_overdamped, Pos_gle_overdamped_const_kernel
 from .gle_estimation import Estimator_gle
-from .trajectories_handler import Trajectories_handler
 
 # from .pos_gle_fem import Pos_gle_fem
 # from .gfpe_instance import Pos_gfpe, Pos_gfpe_fem

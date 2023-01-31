@@ -28,7 +28,7 @@ xvaf = vb.compute_va(xf)
 xva_list.append(xvaf)
 
 
-estimator = vb.Estimator_gle(vb.Trajectories_handler(xva_list), vb.Pos_gle, bf.TensorialBasis2D(bf.PolynomialFeatures(deg=1)), trunc=10, saveall=False)
+estimator = vb.Estimator_gle(xva_list, vb.Pos_gle, bf.TensorialBasis2D(bf.PolynomialFeatures(deg=1)), trunc=10, saveall=False)
 print("Dimension of observable", estimator.model.dim_x)
 model = estimator.compute_mean_force()
 # print(mymem.force_coeff)
