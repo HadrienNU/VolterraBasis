@@ -135,7 +135,7 @@ class Estimator_gle(object):
                 self.data_describe = sum_describe(self.data_describe, des_data)
         return self.data_describe
 
-    def to_gfpe(self, model=None):
+    def to_gfpe(self, model=None, new_obs_name="dE"):
         """
         Update trajectories to compute derivative of the basis function
         """
@@ -143,7 +143,8 @@ class Estimator_gle(object):
             model = self.model
         for i in range(len(self.xva_list)):
             _, _, dE = self.model.basis_vector(self.xva_list[i])
-            self.xva_list[i].update({"dE": (["time", "dim_dE"], dE)})
+            self.xva_list[i].update({new_obs_name: (["time", "dim_dE"], dE)})
+        self.model.L_obs = new_obs_name
 
     def _loop_over_trajs_serial(self, func, model, **kwargs):
         """
