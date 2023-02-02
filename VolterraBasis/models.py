@@ -18,6 +18,14 @@ def _convert_input_array_for_evaluation(array, dim_x):
         return xr.Dataset({"x": (["time", "dim_x"], x)})
 
 
+def matmulPrange(P_mat, E):
+    """
+    Reduce basis size when needed
+    """
+    P_range = xr.DataArray(P_mat, dims=["dim_basis", "dim_basis_old"])
+    return xr.dot(P_range, E.rename({"dim_basis": "dim_basis_old"}))
+
+
 class ModelBase(object):
     """
     The base class for holding the model
@@ -56,7 +64,9 @@ class ModelBase(object):
 
         self.inv_mass_coeff = None
         self.eff_mass = None
-        self.kernel_gram = None
+
+        self.gram_force = None
+        self.gram_kernel = None
 
         self.method = None
 
@@ -163,8 +173,9 @@ class ModelBase(object):
         dt = time[1] - time[0]
         E_force, E, _ = self.basis_vector(xva)
         if self.rank_projection:
-            E = np.einsum("kj,ij->ik", self.P_range, E)  # TODO
-        force = xr.dot(E_force, xr.DataArray(self.force_coeff, dims=["dim_basis", "dim_x"]))
+            E = matmulPrange(self.P_range, E)
+            # E = np.einsum("kj,ij->ik", self.P_range, E)  # TODO
+        force = xr.dot(E_force, self.force_coeff, dims=["dim_basis", "dim_x"])
         if self.method in ["rect", "rectangular", "second_kind_rect"] or self.method is None:
             memory = memory_rect(self.kernel[:trunc_kernel], E, dt)
         elif self.method == "trapz" or self.method == "second_kind_trapz":
@@ -191,9 +202,9 @@ class ModelBase(object):
         dt = xva["time"].data[1] - xva["time"].data[0]
         E_force, E, _ = self.basis_vector(xva)
         if self.rank_projection:
-            E = np.einsum("kj,ij->ik", self.P_range, E)  # TODO
+            E = matmulPrange(self.P_range, E)
 
-        noise = xva[self.L_obs].to_numpy() - xr.dot(E_force, xr.DataArray(self.force_coeff, dims=["dim_basis", "dim_x"])).to_numpy()
+        noise = (xva[self.L_obs] - xr.dot(E_force, self.force_coeff)).to_numpy()
 
         if left_op is None:
             left_op = noise
@@ -201,9 +212,9 @@ class ModelBase(object):
             left_op = xva[left_op]
 
         if self.method in ["rect", "rectangular", "second_kind_rect"] or self.method is None:
-            return self.time_kernel, corrs_rect(noise, self.kernel, E, left_op, dt)
+            return self.kernel["time"], corrs_rect(noise, self.kernel, E, left_op, dt)
         elif self.method == "trapz" or self.method == "second_kind_trapz":
-            return self.time_kernel[:-1], corrs_trapz(noise, self.kernel, E, left_op, dt)
+            return self.kernel["time"][:-1], corrs_trapz(noise, self.kernel, E, left_op, dt)
         else:
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
 
@@ -220,7 +231,7 @@ class ModelBase(object):
             if coeffs.shape != (self.N_basis_elt_force, self.dim_obs):
                 warnings.warn("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="force")
-        return np.einsum("ik,kl->il", E, coeffs)  # Return the force as array (nb of evalution point x dim_obs)
+        return xr.dot(E, coeffs).to_numpy()  # Return the force as array (nb of evalution point x dim_obs)
 
     def pmf_eval(self, x, coeffs=None, kT=1.0, set_zero=True):
         """
@@ -241,7 +252,7 @@ class ModelBase(object):
             warnings.warn("Effective mass has not been computed, use effetive mass of 1.0")
             self.eff_mass = np.identity(self.dim_x)
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="pmf")
-        pmf = -1 * np.einsum("ik,kl->il", E, np.matmul(coeffs, self.eff_mass)) / kT
+        pmf = -1 * xr.dot(E, coeffs, self.eff_mass).to_numpy() / kT
         return pmf - float(set_zero) * np.min(pmf)
 
     def inv_mass_eval(self, x, coeffs=None, set_zero=True):
@@ -258,7 +269,7 @@ class ModelBase(object):
             if coeffs.shape != (self.N_basis_elt_force, self.dim_x, self.dim_x):
                 raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_x, self.dim_x)))
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="force")
-        return np.einsum("ik,kld->ild", E, coeffs)  # Return the force as array (nb of evalution point x dim_obs x dim_obs)
+        return xr.dot(E, coeffs).to_numpy()  # Return the force as array (nb of evalution point x dim_obs x dim_obs)
 
     def pmf_num_int_eval(self, x, kT=1.0, set_zero=True):
         """
@@ -291,8 +302,8 @@ class ModelBase(object):
 
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")
         if self.rank_projection:
-            E = np.einsum("kj,ijd->ikd", self.P_range, E)
-        return self.time_kernel, np.einsum("jkd,ikl->ijld", E, coeffs_ker)  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x)
+            E = matmulPrange(self.P_range, E)
+        return xr.dot(coeffs_ker, E.rename({"dim_x": "dim_x'"}))  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x) En fait plus maintenant TODO
 
     def laplace_transform_kernel(self, s_start=0.0, s_end=None, n_points=None):
         """
@@ -308,21 +319,41 @@ class ModelBase(object):
         s_range = np.linspace(s_start, s_end, n_points)
         laplace = np.zeros((n_points, self.kernel.shape[1], self.kernel.shape[2]))
         for n, s in enumerate(s_range):
-            laplace[n, :, :] = simpson(np.einsum("i,ijk-> ijk", np.exp(-s * self.time_kernel[:, 0]), self.kernel), self.time_kernel[:, 0], axis=0)
+            laplace[n, :, :] = simpson(np.einsum("i,ijk-> ijk", np.exp(-s * self.kernel["time"][:, 0]), self.kernel), self.kernel["time"][:, 0], axis=0)
         return s_range, laplace
 
     def save_model(self):  # TODO
         """
-        Return dictionnary version of the model than can be save to file
+        Return DataSet version of the model than can be save to file
         """
-
         # On doit retourner coeffs de la force, le noyau mémoire, et de quoi générer la base
+        coeffs = xr.Dataset(attrs={"dt": self.dt, "trunc_ind": self.trunc_ind, "L_obs": self.L_obs, "dim_x": self.dim_x, "dim_obs": self.dim_obs})  # Ajouter quelques attributs
+        for key, dat in {"force_coeff": self.force_coeff, "kernel": self.kernel}:  # Rajouter le reste
+            if dat is not None:
+                coeffs.update({key: dat})
+
+        # De l'autre, il faut retourner la base ou bien on dit que c'est la réponsabilité de l'utilisateur
+
+        return coeffs
 
     @classmethod  # TODO
-    def load_model(save):
+    def load_model(cls, coeffs, basis, **kwargs):
         """
         Create a model from a save
+        TODO: autoriser à overwrite les données du model via des kwargs
         """
+        # A partir des attibuts du DataSet construire un dictionnaire des arguments à donner
+        # kwargs = .. dim_x, dim_obs, trunc_ind, L_obs, describe_data
+        cls_attrs = coeffs.attrs
+        for key, value in kwargs.items():
+            cls_attrs[key] = value
+        model = cls(basis, coeffs.attrs["dt"], **cls_attrs)
+
+        for key in ["force_coeff", "kernel"]:
+            if key in coeffs:
+                dat = coeffs[key]
+
+        return model
 
 
 class Pos_gle(ModelBase):
@@ -560,7 +591,7 @@ class Pos_gle_hybrid(ModelBase):
         """
         if self.kernel is None:
             raise Exception("Kernel has not been computed.")
-        return self.time_kernel, self.kernel[:, 0, :]
+        return self.kernel["time"], self.kernel[:, 0, :]
 
     def kernel_eval(self, x):
         """
@@ -570,8 +601,8 @@ class Pos_gle_hybrid(ModelBase):
             raise Exception("Kernel has not been computed.")
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")
         if self.rank_projection:
-            E = np.einsum("kj,ijd->ikd", self.P_range, E)
-        return self.time_kernel, np.einsum("jkd,ikl->ijld", E, self.kernel[:, 1:, :])  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x)
+            E = matmulPrange(self.P_range, E)
+        return self.kernel["time"], np.einsum("jkd,ikl->ijld", E, self.kernel[:, 1:, :])  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x)
 
 
 class Pos_gle_overdamped(ModelBase):

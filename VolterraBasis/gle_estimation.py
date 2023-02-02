@@ -10,6 +10,13 @@ from .correlation import correlation_1D, correlation_ND
 from .fkernel import kernel_first_kind_trapz, kernel_first_kind_rect, kernel_first_kind_midpoint, kernel_second_kind_rect, kernel_second_kind_trapz
 
 
+def inv_xarray(arr):
+    """
+    Wrapper to numpy linalg.inv function
+    """
+    return xr.DataArray(np.linalg.inv(arr), dims=("dim_basis'", "dim_basis"))
+
+
 class Estimator_gle(object):
     """
     The main class for the position dependent memory extraction,
@@ -141,10 +148,12 @@ class Estimator_gle(object):
         """
         if model is None:
             model = self.model
+        self.model.rank_projection = False
         for i in range(len(self.xva_list)):
-            _, _, dE = self.model.basis_vector(self.xva_list[i])
-            self.xva_list[i].update({new_obs_name: (["time", "dim_dE"], dE)})
+            _, _, dE = model.basis_vector(self.xva_list[i])
+            self.xva_list[i].update({new_obs_name: dE.rename({"dim_basis": "dim_dE"})})
         self.model.L_obs = new_obs_name
+        self.model.dim_obs = dE.shape[-1]
 
     def _loop_over_trajs_serial(self, func, model, **kwargs):
         """
@@ -159,24 +168,24 @@ class Estimator_gle(object):
                 res[i] += arr * weight / self.weightsum
         return res
 
-    def compute_gram(self):
+    def compute_gram_force(self):
         if self.verbose:
             print("Calculate gram...")
         avg_gram = self.loop_over_trajs(self._compute_gram, self.model, gram_type="force")[0]
-        self.model.invgram = np.linalg.pinv(avg_gram)
+        self.model.gram_force = avg_gram
         if self.verbose:
-            print("Found inverse gram:", self.invgram)
+            print("Found gram:", avg_gram)
         return self.model
 
-    def compute_kernel_gram(self):
+    def compute_gram_kernel(self):
         """
         Return gram matrix of the kernel part of the basis.
         """
         if self.verbose:
             print("Calculate kernel gram...")
-        self.model.kernel_gram = self.loop_over_trajs(self._compute_gram, self.model, gram_type="kernel")[0]
+        self.model.gram_kernel = self.loop_over_trajs(self._compute_gram, self.model, gram_type="kernel")[0]
         if self.model.rank_projection:
-            self.model.kernel_gram = np.einsum("lj,jk,mk->lm", self.model.P_range, self.kernel_gram, self.model.P_range)
+            self.model.gram_kernel = np.einsum("lj,jk,mk->lm", self.model.P_range, self.gram_kernel, self.model.P_range)
         return self.model
 
     def compute_effective_mass(self):
@@ -186,7 +195,7 @@ class Estimator_gle(object):
         if self.verbose:
             print("Calculate effective mass...")
         v2 = self.loop_over_trajs(self._compute_square_vel, self.model)[0]
-        self.model.eff_mass = np.linalg.inv(v2)
+        self.model.eff_mass = xr.DataArray(np.linalg.inv(v2), dims=("dim_x'", "dim_x"))
 
         if self.verbose:
             print("Found effective mass:", self.model.eff_mass)
@@ -199,7 +208,7 @@ class Estimator_gle(object):
         if self.verbose:
             print("Calculate kernel gram...")
         pos_inv_mass, avg_gram = self.loop_over_trajs(self._compute_square_vel_pos, self.model)
-        self.model.inv_mass_coeff = np.dot(np.linalg.inv(avg_gram), pos_inv_mass)
+        self.model.inv_mass_coeff = np.dot(inv_xarray(avg_gram), pos_inv_mass)
         return self.model
 
     def compute_mean_force(self):
@@ -210,10 +219,12 @@ class Estimator_gle(object):
             print("Calculate mean force...")
         avg_disp, avg_gram = self.loop_over_trajs(self._projection_on_basis, self.model)
         # print(avg_gram)
-        self.model.force_coeff = np.matmul(np.linalg.inv(avg_gram.data), avg_disp.data)  # TODO
+        self.model.gram_force = avg_gram
+        self.model.force_coeff = xr.dot(inv_xarray(avg_gram), avg_disp).rename({"dim_basis'": "dim_basis"})  # TODO
+        print(self.model.force_coeff)
         return self.model
 
-    def compute_corrs(self, large=False, rank_tol=None):
+    def compute_corrs(self, large=False, rank_tol=None, second_order_method=True):
         """
         Compute correlation functions.
 
@@ -223,12 +234,14 @@ class Estimator_gle(object):
             When large is true, it use a slower way to compute correlation that is less demanding in memory
         rank_tol: float, default=None
             Tolerance for rank computation in case of projection onto the range of the basis
+         second_order_method:bool, default = True
+            If set to False do less computation but prevent to use second_order method in Volterra
         """
         if self.verbose:
             print("Calculate correlation functions...")
         if self.model.force_coeff is None:
             raise Exception("Mean force has not been computed.")
-        self.bkdxcorrw, self.dotbkdxcorrw, self.bkbkcorrw, self.dotbkbkcorrw = self.loop_over_trajs(self._correlation_all, self.model)
+        self.bkdxcorrw, self.dotbkdxcorrw, self.bkbkcorrw, self.dotbkbkcorrw = self.loop_over_trajs(self._correlation_all, self.model, second_order_method=second_order_method)
 
         if self.model.rank_projection:
             if self.verbose:
@@ -267,14 +280,14 @@ class Estimator_gle(object):
             raise Exception("Need correlation functions to compute the kernel.")
         print("Compute memory kernel using {} method".format(method))
         time = np.arange(self.model.trunc_ind) * self.dt
-        self.model.time_kernel = (time - time[0]).reshape(-1, 1)  # Set zero time
+        time_ker = time - time[0]  # Set zero time
         self.model.method = method  # Save used method
         if self.verbose:
             print("Use dt:", self.dt)
         if k0 is None and method in ["trapz", "second_kind_rect", "second_kind_trapz"]:  # Then we should compute initial value from time derivative at zero
             if self.dotbkdxcorrw is None:
                 raise Exception("Need correlation with derivative functions to compute the kernel using this method or provide initial value.")
-            k0 = np.matmul(np.linalg.inv(self.bkbkcorrw.isel(time_trunc=0)), self.dotbkdxcorrw.isel(time_trunc=0).to_numpy())
+            k0 = xr.dot(inv_xarray(self.bkbkcorrw.isel(time_trunc=0)), self.dotbkdxcorrw.isel(time_trunc=0)).to_numpy()
             if self.verbose:
                 print("K0", k0)
                 # print("Gram", self.bkbkcorrw[0, :, :])
@@ -283,17 +296,17 @@ class Estimator_gle(object):
             kernel = kernel_first_kind_rect(self.bkbkcorrw.to_numpy(), self.bkdxcorrw.to_numpy(), self.dt)
         elif method == "midpoint":  # Deal with not even data lenght
             kernel = kernel_first_kind_midpoint(self.bkbkcorrw.to_numpy(), self.bkdxcorrw.to_numpy(), self.dt)
-            self.model.time_kernel = self.model.time_kernel[:-1:2, :]
+            time_ker = time_ker[:-1:2]
         elif method == "midpoint_w_richardson":
             ker = kernel_first_kind_midpoint(self.bkbkcorrw.to_numpy(), self.bkdxcorrw.to_numpy(), self.dt)
             ker_3 = kernel_first_kind_midpoint(self.bkbkcorrw.to_numpy()[:, :, ::3], self.bkdxcorrw.to_numpy()[:, :, ::3], 3 * self.dt)
             kernel = (9 * ker[::3][: ker_3.shape[0]] - ker_3) / 8
-            self.model.time_kernel = self.model.time_kernel[:-3:6, :]
+            time_ker = time_ker[:-3:6]
         elif method == "trapz":
             ker = kernel_first_kind_trapz(k0, self.bkbkcorrw.to_numpy(), self.bkdxcorrw.to_numpy(), self.dt)
             kernel = 0.5 * (ker[1:-1, :, :] + 0.5 * (ker[:-2, :, :] + ker[2:, :, :]))  # Smoothing
             kernel = np.insert(kernel, 0, k0, axis=0)
-            self.model.time_kernel = self.model.time_kernel[:-1, :]
+            time_ker = time_ker[:-1]
         elif method == "second_kind_rect":
             if self.dotbkdxcorrw is None or self.dotbkbkcorrw is None:
                 raise Exception("Need correlation with derivative functions to compute the kernel using this method, please use other method.")
@@ -306,8 +319,9 @@ class Estimator_gle(object):
             raise Exception("Method for volterra inversion is not in  {rectangular, midpoint, midpoint_w_richardson,trapz,second_kind_rect,second_kind_trapz}")
 
         if self.saveall:
-            np.savetxt(self.prefix + self.kernelfile, np.hstack((self.model.time_kernel, kernel.reshape(kernel.shape[0], -1))))
-        self.model.kernel = kernel
+            np.savetxt(self.prefix + self.kernelfile, np.hstack((time_ker, kernel.reshape(kernel.shape[0], -1))))
+        self.model.time_kernel = time_ker.reshape(-1, 1)  # Pour l'instant à supprimer de partout
+        self.model.kernel = xr.DataArray(kernel, dims=("time_kernel", "dim_basis", self.bkdxcorrw.dims[1]), coords={"time_kernel": time_ker})  # Transform kernel into an xarray
         return self.model
 
     def check_volterra_inversion(self):
@@ -349,7 +363,6 @@ class Estimator_gle(object):
         E = model.basis_vector(xva, compute_for=gram_type)
         avg_disp = xr.dot(E, xva[model.L_obs]) / weight
         avg_gram = xr.dot(E, E.rename({"dim_basis": "dim_basis'"})) / weight
-        # print(E)
         return avg_disp, avg_gram
 
     @staticmethod
@@ -399,7 +412,8 @@ class Estimator_gle(object):
             func = correlation_ND
         E_force, E, dE = model.basis_vector(xva)
         # print(E_force, model.force_coeff)
-        ortho_xva = xva[model.L_obs] - xr.dot(E_force, xr.DataArray(model.force_coeff, dims=["dim_basis", "dim_x"]))  # TODO
+        ortho_xva = xva[model.L_obs] - xr.dot(E_force, model.force_coeff)  # TODO C'est pas dim_x le deuxième c'est dim_Lobs
+        # print(ortho_xva.head(), E.head())
         bkdxcorrw = xr.apply_ufunc(func, E, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
         bkbkcorrw = xr.apply_ufunc(correlation_ND, E, input_core_dims=[["time"]], output_core_dims=[["dim_basis'", "time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
         if second_order_method:
@@ -407,7 +421,7 @@ class Estimator_gle(object):
             dotbkbkcorrw = xr.apply_ufunc(func, dE.rename({"dim_basis": "dim_basis'"}), E, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
         else:
             # We can compute only the first element then, that is faster
-            dotbkdxcorrw = xr.dot(dE, xva[model.L_obs], ortho_xva) / weight  # Maybe reshape to add a dimension of size 1 and name time_trunc
+            dotbkdxcorrw = xr.dot(dE, ortho_xva).expand_dims({"time_trunc": 1}) / weight  # Maybe reshape to add a dimension of size 1 and name time_trunc
             dotbkbkcorrw = np.array([[0.0]])
         return bkdxcorrw, dotbkdxcorrw, bkbkcorrw, dotbkbkcorrw
 

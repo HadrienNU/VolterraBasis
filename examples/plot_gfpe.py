@@ -44,8 +44,9 @@ axs.set_ylabel("$\\Gamma$")
 axs.grid()
 # axs.plot(model.time, model.kernel[:, 0, 0], "-x")
 # axs.plot(model.time, model.kernel[:, 0, 1], "-x")
-axs.plot(model.time_kernel, model.kernel[:, 2, :], "-x")
-axs.plot(model.time_kernel, model.kernel[:, :, 2], "-x")
+print(model.kernel.shape, model.kernel.dims)
+axs.plot(model.kernel["time"], model.kernel[:, 2, :], "-x")
+axs.plot(model.kernel["time"], model.kernel[:, :, 2], "-x")
 
 
 occ = estimator.occupations()

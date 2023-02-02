@@ -31,8 +31,8 @@ print("Dimension of observable", estimator.model.dim_x)
 estimator.compute_mean_force()
 estimator.compute_corrs()
 model = estimator.compute_kernel(method="trapz")
-time, kernel = model.kernel_eval([1.5, 2.0, 2.5])
-print(time.shape, kernel.shape)
+kernel = model.kernel_eval([1.5, 2.0, 2.5])
+print(kernel)
 # To find a correct parametrization of the space
 bins = np.histogram_bin_edges(xvaf["x"], bins=15)
 xfa = (bins[1:] + bins[:-1]) / 2.0
@@ -53,10 +53,11 @@ axs[0].plot(xfa, force)
 # Kernel plot
 axs[1].set_title("Memory kernel")
 axs[1].set_xscale("log")
+axs[1].grid()
+kernel.squeeze().plot.line("-x", x="time_kernel", ax=axs[1])
+# axs[1].plot(time, kernel[:, :, 0, 0], "-x")
 axs[1].set_xlabel("$t$")
 axs[1].set_ylabel("$\\Gamma$")
-axs[1].grid()
-axs[1].plot(time, kernel[:, :, 0, 0], "-x")
 
 # Noise plot
 axs[2].set_title("Noise")
