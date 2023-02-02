@@ -45,12 +45,12 @@ axs.grid()
 # axs.plot(model.time, model.kernel[:, 0, 0], "-x")
 # axs.plot(model.time, model.kernel[:, 0, 1], "-x")
 print(model.kernel.shape, model.kernel.dims)
-axs.plot(model.kernel["time"], model.kernel[:, 2, :], "-x")
-axs.plot(model.kernel["time"], model.kernel[:, :, 2], "-x")
+axs.plot(model.kernel["time_kernel"], model.kernel[:, 2, :], "-x")
+axs.plot(model.kernel["time_kernel"], model.kernel[:, :, 2], "-x")
 
 
-occ = estimator.occupations()
-
+occ = estimator.compute_basis_mean()
+print(occ)
 p0 = np.zeros(model.dim_obs)
 p0[0] = 1
 

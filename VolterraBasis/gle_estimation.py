@@ -10,7 +10,7 @@ from .correlation import correlation_1D, correlation_ND
 from .fkernel import kernel_first_kind_trapz, kernel_first_kind_rect, kernel_first_kind_midpoint, kernel_second_kind_rect, kernel_second_kind_trapz
 
 
-def inv_xarray(arr):
+def inv_xarray(arr):  # TODO, comme on vrai à chaque fois on veut faire G^{-1}*qc on peut juste remplacer ça par une fct qui resout le porblème Gx = b
     """
     Wrapper to numpy linalg.inv function
     """
@@ -167,6 +167,12 @@ class Estimator_gle(object):
             for i, arr in enumerate(single_res):
                 res[i] += arr * weight / self.weightsum
         return res
+
+    def compute_basis_mean(self, basis_type="force"):
+        """
+        Compute mean value of the basis function
+        """
+        return self.loop_over_trajs(self._compute_basis_mean, self.model, basis_type=basis_type)[0]
 
     def compute_gram_force(self):
         if self.verbose:
@@ -364,6 +370,14 @@ class Estimator_gle(object):
         avg_disp = xr.dot(E, xva[model.L_obs]) / weight
         avg_gram = xr.dot(E, E.rename({"dim_basis": "dim_basis'"})) / weight
         return avg_disp, avg_gram
+
+    @staticmethod
+    def _compute_basis_mean(weight, xva, model, basis_type="force", **kwargs):
+        """
+        Do the needed scalar product for one traj
+        """
+        E = model.basis_vector(xva, compute_for=basis_type)
+        return (E.mean(dim="time"),)
 
     @staticmethod
     def _compute_gram(weight, xva, model, gram_type="force", **kwargs):

@@ -31,7 +31,7 @@ estimator = vb.Estimator_gle(xva_list, vb.Pos_gle_const_kernel, bf.BSplineFeatur
 estimator.compute_mean_force()
 estimator.compute_corrs()
 model = estimator.compute_kernel(method="trapz")
-time_ker, kernel = model.kernel["time"], model.kernel
+time_ker, kernel = model.kernel["time_kernel"], model.kernel
 print("Prony")
 A_prony = vb.prony_fit_kernel(time_ker, kernel, thres=None, N_keep=150)
 kernel_filtered = vb.prony_inspect_data(kernel[:, 0, 0], thres=None, N_keep=150)

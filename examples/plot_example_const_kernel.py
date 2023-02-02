@@ -31,7 +31,7 @@ print("Dimension of observable", estimator.model.dim_x)
 estimator.compute_mean_force()
 estimator.compute_corrs()
 model = estimator.compute_kernel(method="trapz")
-time, kernel = model.kernel["time"], model.kernel[:, 0, 0]
+time, kernel = model.kernel["time_kernel"], model.kernel[:, 0, 0]
 print(time.shape, kernel.shape)
 # To find a correct parametrization of the space
 bins = np.histogram_bin_edges(xvaf["x"], bins=15)
