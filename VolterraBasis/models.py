@@ -184,7 +184,7 @@ class ModelBase(object):
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
         return time, xva[self.L_obs] - force - memory, xva[self.L_obs], force, memory
 
-    def compute_corrs_w_noise(self, xva, left_op=None):
+    def compute_corrs_w_noise(self, xva, left_op=None):  # TODO return an xarray aussi ??
         """
         Compute correlation between noise and left_op
 
@@ -212,9 +212,9 @@ class ModelBase(object):
             left_op = xva[left_op]
 
         if self.method in ["rect", "rectangular", "second_kind_rect"] or self.method is None:
-            return self.kernel["time"], corrs_rect(noise, self.kernel, E, left_op, dt)
+            return self.kernel["time_kernel"], corrs_rect(noise, self.kernel, E, left_op, dt)
         elif self.method == "trapz" or self.method == "second_kind_trapz":
-            return self.kernel["time"][:-1], corrs_trapz(noise, self.kernel, E, left_op, dt)
+            return self.kernel["time_kernel"][:-1], corrs_trapz(noise, self.kernel, E, left_op, dt)
         else:
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
 
@@ -304,6 +304,42 @@ class ModelBase(object):
         if self.rank_projection:
             E = matmulPrange(self.P_range, E)
         return xr.dot(coeffs_ker, E.rename({"dim_x": "dim_x'"}))  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x) En fait plus maintenant TODO
+
+    def evolve_volterra(self, G0, lenTraj, method="trapz", trunc_ind=None):
+        """
+        Evolve in time the integro-differential equation.
+        This assume that the GLE is a linear GLE (i.e. the set of basis function is on the left and right of the equality)
+
+        Parameters
+        ----------
+        G0 : array
+            Initial value of the correlation
+        lenTraj : int
+            Length of the time evolution
+        method : str, default="trapz"
+            Method that is used to discretize the continuous Volterra equations
+        trunc_ind: int, default= self.trunc_ind
+            Truncate the length of the memory to this value
+        """
+        raise NotImplementedError
+
+        # TODO : A réimplémenter en fortran avec les coeffs en xarray
+        # Modifier le code fortran pour séparer l'évolution en temps du calcul de la dérivée ce qui sera plus pratique pour le calcul du flux
+        if method == "rect":
+            p = solve_ide_rect(kernel, p0, force_coeff, lenTraj, self.dt)  # TODO it might worth transpose all the code for the kernel
+        elif method == "trapz":
+            p = solve_ide_trapz(kernel, p0, force_coeff, lenTraj, self.dt)
+        elif method == "trapz_stab":
+            p = solve_ide_trapz_stab(kernel, p0, force_coeff, lenTraj, self.dt)
+        return np.arange(lenTraj) * self.dt, np.squeeze(p)
+
+    def flux_from_volterra(self, G_t, method, trunc_ind=None, force=None, kernel=None):
+        """
+        From a solution of the Volterra equation, compute the flux term.
+        That allow to compute decomposition of the flux
+        """
+        # A partir d'une solution
+        raise NotImplementedError
 
     def laplace_transform_kernel(self, s_start=0.0, s_end=None, n_points=None):
         """
@@ -631,7 +667,7 @@ class Pos_gle_overdamped(ModelBase):
             return E.reshape(-1, self.N_basis_elt_kernel, self.dim_x)
         elif compute_for == "corrs":
             dbk = xr.apply_ufunc(self.basis.deriv, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis", "dim_x"]], exclude_dims={"dim_x"}, dask="forbidden")
-            dE = np.einsum("nld,nd->nl", dbk, xva["v"].data)
+            dE = xr.dot(dbk, xva["v"], dims=["dim_x"])
             return E, E, dE
         else:
             raise ValueError("Basis evaluation goal not specified")

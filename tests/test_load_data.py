@@ -1,4 +1,5 @@
 import pytest
+import os
 import numpy as np
 import VolterraBasis as vb
 
@@ -12,8 +13,14 @@ Pour les tests: on peut tester:
 """
 
 
-def test_load_traj():
-    trj = np.loadtxt("../examples/example_lj.trj")
+@pytest.fixture
+def lj_path():
+    file_dir = os.path.dirname(os.path.realpath(__file__))
+    return os.path.join(file_dir, "../examples/example_lj.trj")
+
+
+def test_load_traj(lj_path):
+    trj = np.loadtxt(lj_path)
     xf = vb.xframe(trj[:, 1], trj[:, 0] - trj[0, 0])
     xvaf = vb.compute_va(xf)
     assert "a" in xvaf.keys()
@@ -21,8 +28,8 @@ def test_load_traj():
     assert "dt" in xvaf.attrs
 
 
-def test_velocity_from_file():
-    trj = np.loadtxt("../examples/example_lj.trj")
+def test_velocity_from_file(lj_path):
+    trj = np.loadtxt(lj_path)
     xf = vb.xframe(trj[:, 1], trj[:, 0] - trj[0, 0], v=trj[:, 2])
     assert "v" in xf.keys()
 

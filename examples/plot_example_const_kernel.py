@@ -41,8 +41,7 @@ force = model.force_eval(xfa)
 
 time_corrs, noise_corr = estimator.compute_corrs_w_noise()
 
-vel_var = estimator.compute_effective_mass().eff_mass[0, 0]
-
+vel_var = estimator.compute_effective_mass().eff_mass.values[0, 0]
 # Compute noise
 time_noise, noise_reconstructed, _, _, _ = model.compute_noise(xva_list[0], trunc_kernel=200)
 
@@ -61,7 +60,7 @@ axs[1].set_xlabel("$t$")
 axs[1].set_ylabel("$\\Gamma$")
 axs[1].grid()
 axs[1].plot(time, kernel, "-")
-axs[1].plot(time_corrs[:, 0], noise_corr[:, 0, 0] * vel_var, "-x")
+axs[1].plot(time_corrs, noise_corr[:, 0, 0] * vel_var, "-x")
 
 # Noise plot
 axs[2].set_title("Noise")

@@ -207,11 +207,11 @@ def prony_fit_kernel(times, kernel, thres=None, N_keep=None):
     Note: Smaller N_keep or higher threshold result in faster analysis. Result can also depend strongly of the value of either thres or N_keep
     """
     _, dim_basis, dim_x = kernel.shape
-    dt = times.flatten()[1] - times.flatten()[0]
+    dt = (times[1] - times[0]).values
     list_A = [[0] * dim_basis for i in range(dim_x)]
     for d in range(dim_x):
         for k in range(dim_basis):
-            list_A[d][k] = prony_fit_times_serie(kernel[:, k, d], dt, thres=thres, N_keep=N_keep)
+            list_A[d][k] = prony_fit_times_serie(kernel[:, k, d].values, dt, thres=thres, N_keep=N_keep)
     return list_A
 
 

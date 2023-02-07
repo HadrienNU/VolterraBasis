@@ -263,7 +263,7 @@ class Estimator_gle(object):
                 self.dotbkdxcorrw = xr.dot(P_range, self.dotbkdxcorrw.rename({"dim_basis": "dim_basis_old"}))
             if isinstance(self.dotbkbkcorrw, xr.DataArray):
                 self.dotbkbkcorrw = xr.dot(P_range_tranpose, P_range, self.dotbkbkcorrw.rename({"dim_basis": "dim_basis_old", "dim_basis'": "dim_basis_old'"}))
-        if self.saveall:
+        if self.saveall:  # TODO: change to xarray save
             np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(self.bkdxcorrw.shape[0], -1))
             np.savetxt(self.prefix + self.corrsfile, self.bkbkcorrw.reshape(self.bkbkcorrw.shape[0], -1))
             np.savetxt(self.prefix + self.dcorrsdxfile, self.dotbkdxcorrw.reshape(self.dotbkdxcorrw.shape[0], -1))
@@ -324,7 +324,7 @@ class Estimator_gle(object):
         else:
             raise Exception("Method for volterra inversion is not in  {rectangular, midpoint, midpoint_w_richardson,trapz,second_kind_rect,second_kind_trapz}")
 
-        if self.saveall:
+        if self.saveall:  # TODO: change to xarray save
             np.savetxt(self.prefix + self.kernelfile, np.hstack((time_ker, kernel.reshape(kernel.shape[0], -1))))
         self.model.time_kernel = time_ker.reshape(-1, 1)  # Pour l'instant à supprimer de partout
         self.model.kernel = xr.DataArray(kernel, dims=("time_kernel", "dim_basis", self.bkdxcorrw.dims[1]), coords={"time_kernel": time_ker})  # Transform kernel into an xarray
@@ -335,7 +335,7 @@ class Estimator_gle(object):
         For checking if the volterra equation is correctly inversed
         Compute the integral in volterra equation using trapezoidal rule
         """
-        if self.kernel is None:
+        if self.model.kernel is None:
             raise Exception("Kernel has not been computed.")
         dt = self.dt
         time = np.arange(self.bkdxcorrw.shape[0]) * dt
@@ -343,7 +343,7 @@ class Estimator_gle(object):
         # res_int[0, :] = 0.5 * dt * to_integrate[0, :]
         # if method == "trapz":
         for n in range(self.model.trunc_ind):
-            to_integrate = np.einsum("ijk,ikl->ijl", self.bkbkcorrw[: n + 1, :, :][::-1, :, :], self.model.kernel[: n + 1, :, :])
+            to_integrate = np.einsum("ijk,ikl->ijl", self.bkbkcorrw[:, :, : n + 1][:, :, ::-1], self.model.kernel[: n + 1, :, :])
             res_int[n, :] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
             # res_int[n, :] = -1 * simpson(to_integrate, dx=dt, axis=0, even="last")  # res_int[n - 1, :] + 0.5 * dt * (to_integrate[n - 1, :] + to_integrate[n, :])
         # else:

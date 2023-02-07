@@ -43,8 +43,8 @@ axs.grid()
 # Iterate over method for comparaison
 for method in ["rectangular", "midpoint", "midpoint_w_richardson", "trapz", "second_kind_rect", "second_kind_trapz"]:
     model = estimator.compute_kernel(method=method)
-    time_ker, kernel_vb = model.kernel_eval([2.0])
-    axs.plot(time_ker, kernel_vb[:, :, 0, 0], "-o", label=method)
+    kernel_vb = model.kernel_eval([2.0])
+    axs.plot(kernel_vb["time_kernel"], kernel_vb[:, :, 0, 0], "-o", label=method)
 axs.legend(loc="best")
 
 plt.show()

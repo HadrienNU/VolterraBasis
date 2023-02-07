@@ -22,7 +22,7 @@ def _get_bspline_basis(knots, degree=3, periodic=False):
     return bsplines
 
 
-class BSplineFeatures(TransformerMixin):
+class BSplineFeatures(TransformerMixin):  # TODO replace current implementation by one using Bspline.basis_element
     """
     B splines features
     """
