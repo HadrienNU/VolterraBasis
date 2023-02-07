@@ -133,7 +133,7 @@ class SmoothIndicatorFeatures(TransformerMixin):
     Indicator function with smooth boundary
     """
 
-    def __init__(self, states_boundary, boundary_type="tricube", periodic=False):
+    def __init__(self, states_boundary, boundary_type="tricube", periodic=False, only_right_derivative=False):
         """
         Parameters
         ----------
@@ -147,6 +147,7 @@ class SmoothIndicatorFeatures(TransformerMixin):
         """
         self.periodic = periodic
         self.states_boundary = states_boundary
+        self.only_right_derivative = only_right_derivative
         self.n_states = len(states_boundary)  # -1 ? ca dépend si c'est périodique ou pas
         self.const_removed = False
         if boundary_type == "tricube":
@@ -209,7 +210,7 @@ class SmoothIndicatorFeatures(TransformerMixin):
         der = np.where(u > 1, 0, der)
 
         features[(Ellipsis, slice(0, 1)) + (0,) * deriv_order] = der
-        der_next = -der
+        der_next = -der * (int(not self.only_right_derivative))
 
         for n in range(1, self.n_states):
             # right boundary
@@ -220,7 +221,7 @@ class SmoothIndicatorFeatures(TransformerMixin):
             der = np.where(u > 1, 0, der)
 
             features[(Ellipsis, slice(n, n + 1)) + (0,) * deriv_order] = np.where(u < 0, der_next, der)
-            der_next = -np.where(u < 0, 0, der)
+            der_next = -np.where(u < 0, 0, der) * (int(not self.only_right_derivative))
 
         if self.periodic:
             features[(Ellipsis, slice(0, 1)) + (0,) * deriv_order] = np.where(der_next != 0.0, der_next, features[(Ellipsis, slice(0, 1)) + (0,) * deriv_order])
