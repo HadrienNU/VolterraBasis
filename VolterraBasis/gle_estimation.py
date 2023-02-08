@@ -342,10 +342,12 @@ class Estimator_gle(object):
         res_int = np.zeros(self.bkdxcorrw.shape)
         # res_int[0, :] = 0.5 * dt * to_integrate[0, :]
         # if method == "trapz":
-        for n in range(self.model.trunc_ind):
-            to_integrate = np.einsum("ijk,ikl->ijl", self.bkbkcorrw[:, :, : n + 1][:, :, ::-1], self.model.kernel[: n + 1, :, :])
-            res_int[n, :] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
-            # res_int[n, :] = -1 * simpson(to_integrate, dx=dt, axis=0, even="last")  # res_int[n - 1, :] + 0.5 * dt * (to_integrate[n - 1, :] + to_integrate[n, :])
+        for n in range(self.model.kernel.shape[0]):
+            # print(self.bkbkcorrw[:, :, : n + 1][:, :, ::-1].shape, self.model.kernel[: n + 1, :, :].shape)
+            to_integrate = np.einsum("jki,ikl->ijl", self.bkbkcorrw[:, :, : n + 1][:, :, ::-1], self.model.kernel[: n + 1, :, :])
+            # print(res_int.shape, to_integrate.shape, self.model.kernel.shape)
+            res_int[:, :, n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
+            # res_int[:, :, n] = -1 * simpson(to_integrate, dx=dt, axis=0, even="last")  # res_int[n - 1, :] + 0.5 * dt * (to_integrate[n - 1, :] + to_integrate[n, :])
         # else:
         #     for n in range(self.model.trunc_ind):
         #         to_integrate = np.einsum("ijk,ik->ij", self.dotbkbkcorrw[: n + 1, :, :][::-1, :, :], self.kernel[: n + 1, :])
