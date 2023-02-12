@@ -230,7 +230,7 @@ class Estimator_gle(object):
         print(self.model.force_coeff)
         return self.model
 
-    def compute_corrs(self, large=False, rank_tol=None, second_order_method=True):
+    def compute_corrs(self, large=False, rank_tol=None, **kwargs):
         """
         Compute correlation functions.
 
@@ -247,7 +247,7 @@ class Estimator_gle(object):
             print("Calculate correlation functions...")
         if self.model.force_coeff is None:
             raise Exception("Mean force has not been computed.")
-        self.bkdxcorrw, self.dotbkdxcorrw, self.bkbkcorrw, self.dotbkbkcorrw = self.loop_over_trajs(self._correlation_all, self.model, second_order_method=second_order_method)
+        self.bkdxcorrw, self.dotbkdxcorrw, self.bkbkcorrw, self.dotbkbkcorrw = self.loop_over_trajs(self._correlation_all, self.model, **kwargs)
 
         if self.model.rank_projection:
             if self.verbose:
@@ -431,7 +431,7 @@ class Estimator_gle(object):
         ortho_xva = xva[model.L_obs] - xr.dot(E_force, model.force_coeff)  # TODO C'est pas dim_x le deuxième c'est dim_Lobs
         # print(ortho_xva.head(), E.head())
         bkdxcorrw = xr.apply_ufunc(func, E, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
-        bkbkcorrw = xr.apply_ufunc(correlation_ND, E, input_core_dims=[["time"]], output_core_dims=[["dim_basis'", "time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
+        bkbkcorrw = xr.apply_ufunc(func, E, input_core_dims=[["time"]], output_core_dims=[["dim_basis'", "time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
         if second_order_method:
             dotbkdxcorrw = xr.apply_ufunc(func, dE, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
             dotbkbkcorrw = xr.apply_ufunc(func, dE.rename({"dim_basis": "dim_basis'"}), E, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")

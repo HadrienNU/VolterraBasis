@@ -147,7 +147,7 @@ class ModelBase(object):
         """
         raise NotImplementedError
 
-    def set_zero_force(self):
+    def set_zero_force(self):  # TODO
         self.force_coeff = np.zeros((self.N_basis_elt_force, self.dim_obs))
 
     def compute_noise(self, xva, trunc_kernel=None, start_point=0, end_point=None):
@@ -364,7 +364,7 @@ class ModelBase(object):
         """
         # On doit retourner coeffs de la force, le noyau mémoire, et de quoi générer la base
         coeffs = xr.Dataset(attrs={"dt": self.dt, "trunc_ind": self.trunc_ind, "L_obs": self.L_obs, "dim_x": self.dim_x, "dim_obs": self.dim_obs})  # Ajouter quelques attributs
-        for key, dat in {"force_coeff": self.force_coeff, "kernel": self.kernel}:  # Rajouter le reste
+        for key, dat in {"force_coeff": self.force_coeff, "kernel": self.kernel}.items():  # Rajouter le reste
             if dat is not None:
                 coeffs.update({key: dat})
 
@@ -615,7 +615,7 @@ class Pos_gle_hybrid(ModelBase):
             return bk.reshape(-1, self.N_basis_elt_kernel - 1, 1)
         elif compute_for == "corrs":
             E = xr.concat([xva["v"].rename({"dim_x": "dim_basis"}), bk], dim="dim_basis")
-            dbk = np.einsum("nld,nd->nl", xr.apply_ufunc(self.basis.deriv, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis", "dim_x"]], exclude_dims={"dim_x"}, dask="forbidden"), xva["v"].data)
+            dbk = xr.dot(xr.apply_ufunc(self.basis.deriv, xva["x"], input_core_dims=[["dim_x"]], output_core_dims=[["dim_basis", "dim_x"]], exclude_dims={"dim_x"}, dask="forbidden"), xva["v"])
             dE = xr.concat([xva["a"].rename({"dim_x": "dim_basis"}), dbk], dim="dim_basis")  # To test
             return bk, E, dE
         else:
