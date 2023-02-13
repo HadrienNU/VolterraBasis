@@ -5,7 +5,7 @@ from scipy.stats import describe
 
 from .basis import sum_describe
 
-from .correlation import correlation_1D, correlation_ND
+from .correlation import correlation_1D, correlation_ND, correlation_direct_1D, correlation_direct_ND
 
 from .fkernel import kernel_first_kind_trapz, kernel_first_kind_rect, kernel_first_kind_midpoint, kernel_second_kind_rect, kernel_second_kind_trapz
 
@@ -247,7 +247,7 @@ class Estimator_gle(object):
             print("Calculate correlation functions...")
         if self.model.force_coeff is None:
             raise Exception("Mean force has not been computed.")
-        self.bkdxcorrw, self.dotbkdxcorrw, self.bkbkcorrw, self.dotbkbkcorrw = self.loop_over_trajs(self._correlation_all, self.model, **kwargs)
+        self.bkdxcorrw, self.dotbkdxcorrw, self.bkbkcorrw, self.dotbkbkcorrw = self.loop_over_trajs(self._correlation_ufunc, self.model, **kwargs)
 
         if self.model.rank_projection:
             if self.verbose:
@@ -408,7 +408,7 @@ class Estimator_gle(object):
         return avg_disp, avg_gram
 
     @staticmethod
-    def _correlation_all(weight, xva, model, method="fft", vectorize=False, second_order_method=True, **kwargs):
+    def _correlation_ufunc(weight, xva, model, method="fft", vectorize=False, second_order_method=True, **kwargs):
         """
         Do the correlation
         Return 4 array with dimensions
@@ -420,10 +420,10 @@ class Estimator_gle(object):
         """
         if method == "fft" and vectorize:
             func = correlation_1D
-        # elif method == "direct" and not vectorize:
-        #     func = correlation_direct_ND
-        # elif method == "direct" and vectorize:
-        #     func = correlation_direct_1D
+        elif method == "direct" and not vectorize:
+            func = correlation_direct_ND
+        elif method == "direct" and vectorize:
+            func = correlation_direct_1D
         else:
             func = correlation_ND
         E_force, E, dE = model.basis_vector(xva)
@@ -431,7 +431,7 @@ class Estimator_gle(object):
         ortho_xva = xva[model.L_obs] - xr.dot(E_force, model.force_coeff)  # TODO C'est pas dim_x le deuxième c'est dim_Lobs
         # print(ortho_xva.head(), E.head())
         bkdxcorrw = xr.apply_ufunc(func, E, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
-        bkbkcorrw = xr.apply_ufunc(func, E, input_core_dims=[["time"]], output_core_dims=[["dim_basis'", "time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
+        bkbkcorrw = xr.apply_ufunc(func, E.rename({"dim_basis": "dim_basis'"}), E, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
         if second_order_method:
             dotbkdxcorrw = xr.apply_ufunc(func, dE, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
             dotbkbkcorrw = xr.apply_ufunc(func, dE.rename({"dim_basis": "dim_basis'"}), E, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")

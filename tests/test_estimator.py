@@ -77,13 +77,13 @@ def test_gfpe(traj_list):
 
 
 # Parametrize test on correlation computation method
-@pytest.mark.parametrize("method,vectorize", [("fft", False), ("fft", True)])
+@pytest.mark.parametrize("method,vectorize", [("fft", False), ("fft", True), ("direct", False), ("direct", True)])
 def test_corrs_method(traj_list, method, vectorize):
-    estimator = vb.Estimator_gle(traj_list, vb.Pos_gle, bf.BSplineFeatures(10, remove_const=False), trunc=10, saveall=False, verbose=False)
+    estimator = vb.Estimator_gle(traj_list, vb.Pos_gle, bf.BSplineFeatures(10, remove_const=False), trunc=1, saveall=False, verbose=False)
     estimator.compute_mean_force()
     estimator.compute_corrs(method=method, vectorize=vectorize, second_order_method=True)
 
-    assert estimator.bkbkcorrw.shape == (9, 9, 2000)
+    assert estimator.bkbkcorrw.shape == (9, 9, 200)
 
     estimator.compute_corrs(method=method, vectorize=vectorize, second_order_method=False)
 
