@@ -123,11 +123,12 @@ class ModelBase(object):
             elif rank == 0:
                 raise Exception("Rank of basis is null.")
             # Construct projection
-            self.P_range = U[:, :rank].T  # # Save the matrix for future use, matrix is rank x N_basis_elt_kernel
+            P_range = U[:, :rank].T  # # Save the matrix for future use, matrix is rank x N_basis_elt_kernel
             # Faster to do one product in order
         else:
             print("No projection onto the range of the basis performed as basis is not deficient.")
-            self.P_range = np.identity(self.N_basis_elt_kernel)
+            P_range = np.identity(self.N_basis_elt_kernel)
+        self.P_range = xr.DataArray(P_range, dims=["dim_basis", "dim_basis_old"])
         return self.P_range
 
     def basis_vector(self, xva, compute_for="corrs"):
@@ -364,16 +365,31 @@ class ModelBase(object):
         """
         # On doit retourner coeffs de la force, le noyau mémoire, et de quoi générer la base
         coeffs = xr.Dataset(attrs={"dt": self.dt, "trunc_ind": self.trunc_ind, "L_obs": self.L_obs, "dim_x": self.dim_x, "dim_obs": self.dim_obs})  # Ajouter quelques attributs
-        for key, dat in {"force_coeff": self.force_coeff, "kernel": self.kernel}.items():  # Rajouter le reste
-            if dat is not None:
-                coeffs.update({key: dat})
+        # for key, dat in {
+        #     "force_coeff": self.force_coeff,
+        #     "kernel": self.kernel,
+        # }.items():  # Rajouter le reste
+        #     if dat is not None:
+        #         coeffs.update({key: dat})
+
+        for key, dat in self.__dict__.items():  # {
+            #     "force_coeff": self.force_coeff,
+            #     "kernel": self.kernel,
+            #     "P_range": self.P_range,
+            #     "inv_mass_coeff": self.inv_mass_coeff,
+            #     "eff_mass": self.eff_mass,
+            # }.items():  # Rajouter le reste
+            if key not in coeffs.attrs and key not in ["basis", "N_basis_elt_force", "N_basis_elt_kernel"]:  # Eclude some vaiable
+                if dat is not None:
+                    print(key)
+                    coeffs.update({key: dat})
 
         # De l'autre, il faut retourner la base ou bien on dit que c'est la réponsabilité de l'utilisateur
 
         return coeffs
 
     @classmethod  # TODO
-    def load_model(cls, coeffs, basis, **kwargs):
+    def load_model(cls, basis, coeffs, **kwargs):
         """
         Create a model from a save
         TODO: autoriser à overwrite les données du model via des kwargs
@@ -383,11 +399,11 @@ class ModelBase(object):
         cls_attrs = coeffs.attrs
         for key, value in kwargs.items():
             cls_attrs[key] = value
-        model = cls(basis, coeffs.attrs["dt"], **cls_attrs)
+        model = cls(basis, **cls_attrs)
 
-        for key in ["force_coeff", "kernel"]:
+        for key in ["force_coeff", "kernel", "rank_projection", "P_range", "gram_force"]:
             if key in coeffs:
-                dat = coeffs[key]
+                setattr(model, key, coeffs[key])
 
         return model
 

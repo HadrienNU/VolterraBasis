@@ -252,9 +252,8 @@ class Estimator_gle(object):
         if self.model.rank_projection:
             if self.verbose:
                 print("Projection on range space...")
-            P_mat = self.model._set_range_projection(rank_tol, self.bkbkcorrw.isel(time_trunc=0))
-            P_range = xr.DataArray(P_mat, dims=["dim_basis", "dim_basis_old"])
-            P_range_tranpose = xr.DataArray(P_mat.T, dims=["dim_basis_old'", "dim_basis'"])
+            P_range = self.model._set_range_projection(rank_tol, self.bkbkcorrw.isel(time_trunc=0))
+            P_range_tranpose = P_range.rename({"dim_basis_old": "dim_basis_old'", "dim_basis": "dim_basis'"})
             tempbkbkcorrw = xr.dot(P_range, self.bkbkcorrw.rename({"dim_basis": "dim_basis_old"}))
             self.bkbkcorrw = xr.dot(P_range_tranpose, tempbkbkcorrw.rename({"dim_basis'": "dim_basis_old'"}))
             # self.bkbkcorrw = np.einsum("lj,ijk,mk->ilm", self.model.P_range, self.bkbkcorrw, self.model.P_range)
@@ -326,7 +325,7 @@ class Estimator_gle(object):
 
         if self.saveall:  # TODO: change to xarray save
             np.savetxt(self.prefix + self.kernelfile, np.hstack((time_ker, kernel.reshape(kernel.shape[0], -1))))
-        self.model.time_kernel = time_ker.reshape(-1, 1)  # Pour l'instant à supprimer de partout
+        # self.model.time_kernel = time_ker.reshape(-1, 1)  # Pour l'instant à supprimer de partout
         self.model.kernel = xr.DataArray(kernel, dims=("time_kernel", "dim_basis", self.bkdxcorrw.dims[1]), coords={"time_kernel": time_ker})  # Transform kernel into an xarray
         return self.model
 

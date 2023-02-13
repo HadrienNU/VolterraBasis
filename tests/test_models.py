@@ -35,7 +35,7 @@ def traj_list():
         for model in [vb.Pos_gle]  # , vb.Pos_gle_no_vel_basis, vb.Pos_gle_const_kernel, vb.Pos_gle_overdamped, vb.Pos_gle_overdamped_const_kernel, vb.Pos_gle_with_friction, vb.Pos_gle_hybrid]
         for basis in [
             (bf.LinearFeatures, {}),
-            # (bf.PolynomialFeatures, {"deg": 3, "remove_const": False}),
+            (bf.PolynomialFeatures, {"deg": 3, "remove_const": False}),
             # (bf.FourierFeatures, {"order": 3, "freq": 1.0, "remove_const": False}),
             # (bf.SplineFctFeatures, {"knots": np.linspace(-1, 1, 8), "coeffs": np.logspace(1, 2, 8), "k": 3}),
             # (bf.BSplineFeatures, {"n_knots": 8, "k": 3, "remove_const": False}),
@@ -75,12 +75,14 @@ def test_pos_gle(traj_list, model, basis, parameters):
     assert kernel.shape == (model.trunc_ind - 1, 1, len(xfa), 1)
 
     coeffs = model.save_model()
+    print(coeffs)
+    new_model = model.load_model(basis(**parameters), coeffs)
 
-    new_model = model.load_model(coeffs, **parameters)
+    assert (model.force_coeff == new_model.force_coeff).all()
 
     new_kernel = new_model.kernel_eval(xfa)
 
-    assert kernel == new_kernel
+    assert (kernel == new_kernel).all()
 
 
 # Pour les 2 suivantes faire des tests en plus Pos_gle_with_friction Pos_gle_hybrid
