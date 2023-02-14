@@ -55,10 +55,10 @@ def test_pos_gle(traj_list, model, basis, parameters):
     force = model.force_eval(xfa)
 
     assert force.shape == (len(xfa), 1)
-    #
-    # pmf = model.pmf_eval(xfa)
-    #
-    # assert pmf.shape == (len(xfa), 1)
+
+    pmf = model.pmf_eval(xfa)
+
+    assert pmf.shape == (len(xfa), 1)
     #
     # model.inv_mass_eval(xfa)
     #

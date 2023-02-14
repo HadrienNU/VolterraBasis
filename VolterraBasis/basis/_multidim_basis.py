@@ -34,6 +34,7 @@ class TensorialBasis2D(TransformerMixin):
         self.b1.fit(DescribeResult(describe_result.nobs, (describe_result.minmax[0][0:1], describe_result.minmax[1][0:1]), describe_result.mean[0:1], describe_result.variance[0:1], describe_result.skewness[0:1], describe_result.kurtosis[0:1]))
         self.b2.fit(DescribeResult(describe_result.nobs, (describe_result.minmax[0][1:2], describe_result.minmax[1][1:2]), describe_result.mean[1:2], describe_result.variance[1:2], describe_result.skewness[1:2], describe_result.kurtosis[1:2]))
         self.n_output_features_ = self.b1.n_output_features_ * self.b2.n_output_features_
+        self.dim_out_basis = 1  # This is dimension of the output
         return self
 
     def basis(self, X):

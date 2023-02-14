@@ -31,6 +31,7 @@ print("Dimension of observable", estimator.model.dim_x)
 estimator.compute_mean_force()
 estimator.compute_corrs()
 model = estimator.compute_kernel(method="trapz")
+print(model.force_coeff, model.force_coeff.to_numpy().shape)
 kernel = model.kernel_eval([1.5, 2.0, 2.5])
 print(kernel)
 # To find a correct parametrization of the space

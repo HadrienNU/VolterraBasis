@@ -23,3 +23,6 @@ def test_velocity_from_file(lj_path):
     trj = np.loadtxt(lj_path)
     xf = vb.xframe(trj[:, 1], trj[:, 0] - trj[0, 0], v=trj[:, 2])
     assert "v" in xf.keys()
+
+
+# Add test on mesh

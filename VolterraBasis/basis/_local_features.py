@@ -5,6 +5,8 @@ import numpy as np
 import scipy.interpolate
 import scipy.stats
 from sklearn.base import TransformerMixin
+from scipy.spatial import cKDTree
+
 from ._data_describe import quick_describe, minimal_describe
 
 
@@ -42,6 +44,7 @@ class BSplineFeatures(TransformerMixin):  # TODO replace current implementation 
         self.k = k
         self.n_knots = n_knots  # knots are position along the axis of the knots
         self.const_removed = remove_const
+        self.dim_out_basis = 1
 
     def fit(self, describe_result, knots=None):
         if isinstance(describe_result, np.ndarray):
@@ -171,6 +174,7 @@ class SmoothIndicatorFeatures(TransformerMixin):
         if dim > 1:
             raise ValueError("This basis does not support dimension higher than 1. Try to combine it using TensorialBasis2D")
         self.n_output_features_ = len(self.states_boundary) + (not self.periodic)
+        self.dim_out_basis = 1
         return self
 
     def basis(self, X):

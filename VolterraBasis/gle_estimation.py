@@ -14,7 +14,6 @@ def solve_linear(G, b):  # Write also a sparse version
     """
     Solve the linear problem Gx = b
     """
-    print(G)
     x_np = np.linalg.inv(G.values) @ b.values
     return xr.DataArray(x_np, dims=b.dims)
 
@@ -58,11 +57,8 @@ class Estimator_gle(object):
         self.verbose = verbose
 
         # filenames
-        self.corrsfile = "corrs.txt"
-        self.corrsdxfile = "a-u_corrs.txt"
-        self.dcorrsfile = "dE_corrs.txt"
-        self.dcorrsdxfile = "dE_a-u_corrs.txt"
-        self.kernelfile = "kernel.txt"
+        self.corrsfile = "corrs.nc"
+        self.kernelfile = "kernel.nc"
 
         self.data_describe = None
 
@@ -281,11 +277,11 @@ class Estimator_gle(object):
                 self.dotbkdxcorrw = xr.dot(P_range, self.dotbkdxcorrw.rename({"dim_basis": "dim_basis_old"}))
             if isinstance(self.dotbkbkcorrw, xr.DataArray):
                 self.dotbkbkcorrw = xr.dot(P_range_tranpose, P_range, self.dotbkbkcorrw.rename({"dim_basis": "dim_basis_old", "dim_basis'": "dim_basis_old'"}))
-        if self.saveall:  # TODO: change to xarray save
-            np.savetxt(self.prefix + self.corrsdxfile, self.bkdxcorrw.reshape(self.bkdxcorrw.shape[0], -1))
-            np.savetxt(self.prefix + self.corrsfile, self.bkbkcorrw.reshape(self.bkbkcorrw.shape[0], -1))
-            np.savetxt(self.prefix + self.dcorrsdxfile, self.dotbkdxcorrw.reshape(self.dotbkdxcorrw.shape[0], -1))
-            np.savetxt(self.prefix + self.dcorrsfile, self.dotbkbkcorrw.reshape(self.dotbkbkcorrw.shape[0], -1))
+        if self.saveall:
+            xr.Dataset(
+                {"bkbk": self.bkbkcorrw, "bkdx": self.bkdxcorrw, "dotbkbk": self.dotbkbkcorrw, "dotbkdx": self.dotbkdxcorrw},
+                coords={"time_trunc": np.arange(self.bkbkcorrw.shape[-1]) * self.dt},
+            ).to_netcdf(self.corrsfile)
         return self.model
 
     def compute_kernel(self, method="rectangular", k0=None):
@@ -311,7 +307,7 @@ class Estimator_gle(object):
         if k0 is None and method in ["trapz", "second_kind_rect", "second_kind_trapz"]:  # Then we should compute initial value from time derivative at zero
             if self.dotbkdxcorrw is None:
                 raise Exception("Need correlation with derivative functions to compute the kernel using this method or provide initial value.")
-            k0 = solve_linear(self.bkbkcorrw.isel(time_trunc=0), self.dotbkdxcorrw.isel(time_trunc=0)).to_numpy()  #   xr.dot(inv_xarray(self.bkbkcorrw.isel(time_trunc=0)), self.dotbkdxcorrw.isel(time_trunc=0)).to_numpy()
+            k0 = solve_linear(self.bkbkcorrw.isel(time_trunc=0), self.dotbkdxcorrw.isel(time_trunc=0)).to_numpy()
             if self.verbose:
                 print("K0", k0)
                 # print("Gram", self.bkbkcorrw[0, :, :])
@@ -342,10 +338,9 @@ class Estimator_gle(object):
         else:
             raise Exception("Method for volterra inversion is not in  {rectangular, midpoint, midpoint_w_richardson,trapz,second_kind_rect,second_kind_trapz}")
 
+        self.model.kernel = xr.DataArray(kernel, dims=("time_kernel", "dim_basis", self.bkdxcorrw.dims[1]), coords={"time_kernel": time_ker})
         if self.saveall:  # TODO: change to xarray save
-            np.savetxt(self.prefix + self.kernelfile, np.hstack((time_ker, kernel.reshape(kernel.shape[0], -1))))
-        # self.model.time_kernel = time_ker.reshape(-1, 1)  # Pour l'instant à supprimer de partout
-        self.model.kernel = xr.DataArray(kernel, dims=("time_kernel", "dim_basis", self.bkdxcorrw.dims[1]), coords={"time_kernel": time_ker})  # Transform kernel into an xarray
+            xr.Dataset({"kernel": self.model.kernel}).to_netcdf(self.kernelfile)
         return self.model
 
     def check_volterra_inversion(self):
@@ -374,7 +369,7 @@ class Estimator_gle(object):
         #     res_int += np.einsum("jk,ik->ij", self.bkbkcorrw[0, :, :], self.kernel)
         return time, res_int
 
-    def compute_corrs_w_noise(self, left_op=None):  # TODO à adapter à ce que j'ai du faire pour le calcul des décompositions et à implémenter dans trajs_handler
+    def compute_corrs_w_noise(self, left_op=None):
         return self.loop_over_trajs(self._corrs_w_noise, self.model, left_op=left_op)
 
     @staticmethod
@@ -446,7 +441,7 @@ class Estimator_gle(object):
             func = correlation_ND
         E_force, E, dE = model.basis_vector(xva)
         # print(E_force, model.force_coeff)
-        ortho_xva = xva[model.L_obs] - xr.dot(E_force, model.force_coeff)  # TODO C'est pas dim_x le deuxième c'est dim_Lobs
+        ortho_xva = xva[model.L_obs] - xr.dot(E_force, model.force_coeff)
         # print(ortho_xva.head(), E.head())
         bkdxcorrw = xr.apply_ufunc(func, E, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, dask_gufunc_kwargs={"output_sizes": {"time_trunc": model.trunc_ind}, "allow_rechunk": True}, vectorize=vectorize, dask="parallelized")
         bkbkcorrw = xr.apply_ufunc(func, E.rename({"dim_basis": "dim_basis'"}), E, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, dask_gufunc_kwargs={"output_sizes": {"time_trunc": model.trunc_ind}, "allow_rechunk": True}, vectorize=vectorize, dask="parallelized")

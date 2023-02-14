@@ -3,78 +3,11 @@ from scipy.integrate import trapezoid
 from skfem.assembly.basis import Basis
 from skfem import LinearForm, BilinearForm, solve_linear
 from skfem.helpers import dot
-from scipy.spatial import cKDTree
+
 from itertools import product
 from scipy.sparse import coo_matrix
 
 from .pos_gle_base import Pos_gle_base, _convert_input_array_for_evaluation
-
-
-class ElementFinder:
-    """
-    Class that find the correct element given a location
-    """
-
-    def __init__(self, mesh, mapping=None):
-        # Get dimension from mesh
-        self.dim = mesh.dim()
-        # Transform mesh to triangular version if needed
-        if self.dim == 1:
-            self.max_point = np.max(mesh.p)  # To avoid strict < in np.digitize
-            ix = np.argsort(mesh.p)
-            self.bins = mesh.p[0, ix[0]]
-            self.bins_idx = mesh.t[0]
-            self.find = self.find_element_1D
-        # elif self.dim == 2:
-        #     self.find = self.find_element_2D
-        #     self.mesh_finder = mesh.element_finder(mapping)
-        else:
-            self.tree = cKDTree(np.mean(mesh.p[:, mesh.t], axis=1).T)
-            self.find = self.find_element_ND
-            self.mapping = mesh._mapping() if mapping is None else mapping
-            if self.dim == 2:  # We should also check the type of element
-                self.inside = self.inside_2D
-            elif self.dim == 3:
-                self.inside = self.inside_3D
-
-    def find_element_1D(self, X):
-        """
-        Assuming X is nsamples x 1
-        """
-        maxix = X[:, 0] == self.max_point
-        X[maxix, 0] = X[maxix, 0] - 1e-10  # special case in np.digitize
-        return np.argmax((np.digitize(X[:, 0], self.bins) - 1)[:, None] == self.bins_idx, axis=1)
-
-    def find_element_2D(self, X):
-        return self.mesh_finder(X[:, 0], X[:, 1])
-
-    def find_element_ND(self, X, _search_all=False):
-        tree_query = self.tree.query(X, 5)[1]
-        element_inds = np.empty((X.shape[0],), dtype=np.int)
-        for n, point in enumerate(X):  # Try to avoid loop
-            i_e = tree_query[n, :]
-            X_loc = self.mapping.invF((point.T)[:, None, None], tind=i_e)
-            inside = self.inside(X_loc)
-            element_inds[n] = i_e[np.argmax(inside, axis=0)]
-        return element_inds
-
-    # def find_element_3D(self, X):
-    #     ix = self.tree.query(np.array([x, y, z]).T, 5)[1].flatten()
-    #     X_loc = self.mapping.invF(np.array([x, y, z])[:, None], ix)
-    #     inside = self.inside_3D(X_loc)
-    #     return np.array([ix[np.argmax(inside, axis=0)]]).flatten()
-
-    def inside_2D(self, X):  # Do something more general from Refdom?
-        """
-        Say which point are inside the element
-        """
-        return (X[0] >= -np.finfo(X.dtype).eps) * (X[1] >= -np.finfo(X.dtype).eps) * (1 - X[0] - X[1] >= -np.finfo(X.dtype).eps)
-
-    def inside_3D(X):
-        """
-        Say which point are inside the element
-        """
-        return (X[0] >= 0) * (X[1] >= 0) * (X[2] >= 0) * (1 - X[0] - X[1] - X[2] >= -np.finfo(X.dtype).eps)
 
 
 class Pos_gle_fem_base(Pos_gle_base):
@@ -115,25 +48,6 @@ class Pos_gle_fem_base(Pos_gle_base):
         for xva in self.xva_list:
             if "elem" not in xva.data_vars:
                 xva.update({"elem": (["time"], self.element_finder(xva["x"].data))})
-
-    def _check_basis(self, basis):
-        """
-        Simple checks on the basis class
-        """
-        self.basis = basis
-        self.N_basis_elt = self.basis.N
-        # Find tensorial order of the basis and adapt dimension in consequence
-        test = self.basis.elem.gbasis(self.basis.mapping, self.basis.mapping.F(self.basis.mesh.p), 0)[0]
-        if len(test.shape) == 3:  # Vectorial basis
-            self.dim_basis = test.shape[0]
-        elif len(test.shape) == 2:  # Scalar basis
-            self.dim_basis = 1
-
-    def element_finder(self, x):
-        # At first use, if not implement instancie the element finder
-        if not hasattr(self, "element_finder_from_basis"):
-            self.element_finder_from_basis = ElementFinder(self.basis.mesh, mapping=self.basis.mapping)  # self.basis.mesh.element_finder(mapping=self.basis.mapping)
-        return self.element_finder_from_basis.find(x)
 
     def basis_vector(self, xva, elem, compute_for="corrs"):
         """

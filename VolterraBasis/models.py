@@ -5,6 +5,8 @@ from scipy.integrate import simpson
 from .basis import describe_from_dim
 
 from .fkernel import memory_rect, memory_trapz, corrs_rect, corrs_trapz
+from .fkernel import rect_integral, trapz_integral, simpson_integral
+from .fkernel import solve_ide_rect, solve_ide_trapz, solve_ide_trapz_stab
 
 
 def _convert_input_array_for_evaluation(array, dim_x):
@@ -105,7 +107,7 @@ class ModelBase(object):
 
         self.N_basis_elt = self.basis.n_output_features_
 
-    def _set_range_projection(self, rank_tol, B0):  # TODO
+    def _set_range_projection(self, rank_tol, B0):
         """
         Set and perfom the projection onto the range of the basis for kernel
         """
@@ -175,7 +177,6 @@ class ModelBase(object):
         E_force, E, _ = self.basis_vector(xva)
         if self.rank_projection:
             E = matmulPrange(self.P_range, E)
-            # E = np.einsum("kj,ij->ik", self.P_range, E)  # TODO
         force = xr.dot(E_force, self.force_coeff, dims=["dim_basis", "dim_x"])
         if self.method in ["rect", "rectangular", "second_kind_rect"] or self.method is None:
             memory = memory_rect(self.kernel[:trunc_kernel], E, dt)
@@ -185,7 +186,7 @@ class ModelBase(object):
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
         return time, xva[self.L_obs] - force - memory, xva[self.L_obs], force, memory
 
-    def compute_corrs_w_noise(self, xva, left_op=None):  # TODO return an xarray aussi ??
+    def compute_corrs_w_noise(self, xva, left_op=None):
         """
         Compute correlation between noise and left_op
 
@@ -208,14 +209,18 @@ class ModelBase(object):
         noise = (xva[self.L_obs] - xr.dot(E_force, self.force_coeff)).to_numpy()
 
         if left_op is None:
-            left_op = noise
+            left_op_dat = noise
         elif isinstance(left_op, str):
-            left_op = xva[left_op]
+            left_op_dat = xva[left_op]
+        elif callable(left_op):
+            left_op_dat = left_op(xva)
+        elif isinstance(left_op, np.ndarray) or isinstance(left_op, xr.DataArray):
+            left_op_dat = left_op
 
         if self.method in ["rect", "rectangular", "second_kind_rect"] or self.method is None:
-            return self.kernel["time_kernel"], corrs_rect(noise, self.kernel, E, left_op, dt)
+            return self.kernel["time_kernel"], corrs_rect(noise, self.kernel, E, left_op_dat, dt)
         elif self.method == "trapz" or self.method == "second_kind_trapz":
-            return self.kernel["time_kernel"][:-1], corrs_trapz(noise, self.kernel, E, left_op, dt)
+            return self.kernel["time_kernel"][:-1], corrs_trapz(noise, self.kernel, E, left_op_dat, dt)
         else:
             raise ValueError("Cannot compute noise when kernel computed with method {}".format(self.method))
 
@@ -298,13 +303,13 @@ class ModelBase(object):
         if coeffs_ker is None:
             coeffs_ker = self.kernel
         else:  # Check shape
-            if coeffs_ker.shape != self.kernel.shape:
-                raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs_ker.shape, self.kernel.shape))
+            if coeffs_ker.shape[1:] != self.kernel.shape[1:]:
+                raise Exception("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs_ker.shape[1:], self.kernel.shape[1:]))
 
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")
         if self.rank_projection:
             E = matmulPrange(self.P_range, E)
-        return xr.dot(coeffs_ker, E.rename({"dim_x": "dim_x'"}))  # Return the kernel as array (time x nb of evalution point x dim_obs x dim_x) En fait plus maintenant TODO
+        return xr.dot(coeffs_ker, E.rename({"dim_x": "dim_x'"}))
 
     def evolve_volterra(self, G0, lenTraj, method="trapz", trunc_ind=None):
         """
@@ -324,23 +329,37 @@ class ModelBase(object):
         """
         raise NotImplementedError
 
-        # TODO : A réimplémenter en fortran avec les coeffs en xarray
-        # Modifier le code fortran pour séparer l'évolution en temps du calcul de la dérivée ce qui sera plus pratique pour le calcul du flux
-        if method == "rect":
-            p = solve_ide_rect(kernel, p0, force_coeff, lenTraj, self.dt)  # TODO it might worth transpose all the code for the kernel
-        elif method == "trapz":
-            p = solve_ide_trapz(kernel, p0, force_coeff, lenTraj, self.dt)
-        elif method == "trapz_stab":
-            p = solve_ide_trapz_stab(kernel, p0, force_coeff, lenTraj, self.dt)
-        return np.arange(lenTraj) * self.dt, np.squeeze(p)
-
-    def flux_from_volterra(self, G_t, method, trunc_ind=None, force=None, kernel=None):
+    def flux_from_volterra(self, corrs_force, corrs_kernel=None, force_coeff=None, kernel=None, method="trapz", trunc_ind=None):
         """
         From a solution of the Volterra equation, compute the flux term.
         That allow to compute decomposition of the flux
         """
-        # A partir d'une solution
-        raise NotImplementedError
+        if corrs_kernel is None:
+            corrs_kernel = corrs_force
+        if corrs_force.shape[-1] != corrs_kernel.shape[-1]:
+            print("# WARNING: Different lenght in time for correlation")
+        if force_coeff is None:
+            force_coeff = self.force_coeff.to_numpy()
+        else:
+            force_coeff = np.asarray(force_coeff)
+        if kernel is None:
+            kernel = self.kernel.to_numpy()
+        else:
+            kernel = np.asarray(kernel)
+        if trunc_ind is not None:
+            kernel = kernel[:trunc_ind, :, :]
+        force_term = np.matmul(corrs_force, force_coeff)
+        res_int = np.zeros((corrs_kernel.shape[-1], corrs_kernel.shape[1], kernel.shape[-1]))
+        for n in range(1, corrs_kernel.shape[-1]):
+            max_len = min(n, kernel.shape[0])
+            if method == "rect":
+                res_int[n, :] = -1 * rect_integral(self.dt, corrs_kernel[:, :, n - max_len : n], kernel[:max_len, :, :])
+            elif method == "trapz":
+                res_int[n, :] = -1 * trapz_integral(self.dt, corrs_kernel[:, :, n - max_len : n], kernel[:max_len, :, :])
+            elif method == "simpson":
+                res_int[n, :] = -1 * simpson_integral(self.dt, corrs_kernel[:, :, n - max_len : n], kernel[:max_len, :, :])
+
+        return force_term, res_int
 
     def laplace_transform_kernel(self, s_start=0.0, s_end=None, n_points=None):
         """
@@ -359,7 +378,7 @@ class ModelBase(object):
             laplace[n, :, :] = simpson(np.einsum("i,ijk-> ijk", np.exp(-s * self.kernel["time"][:, 0]), self.kernel), self.kernel["time"][:, 0], axis=0)
         return s_range, laplace
 
-    def save_model(self):  # TODO
+    def save_model(self):
         """
         Return DataSet version of the model than can be save to file
         """
@@ -376,11 +395,10 @@ class ModelBase(object):
 
         return coeffs
 
-    @classmethod  # TODO
+    @classmethod
     def load_model(cls, basis, coeffs, **kwargs):
         """
         Create a model from a save
-        TODO: autoriser à overwrite les données du model via des kwargs
         """
         # A partir des attibuts du DataSet construire un dictionnaire des arguments à donner
         # kwargs = .. dim_x, dim_obs, trunc_ind, L_obs, describe_data
@@ -458,7 +476,7 @@ class Pos_gle(ModelBase):
             raise ValueError("Basis evaluation goal not specified")
 
 
-class Pos_gle_with_friction(ModelBase):
+class Pos_gle_with_friction(Pos_gle):
     """
     A derived class in which we don't enforce zero instantaneous friction
     """
@@ -514,7 +532,7 @@ class Pos_gle_with_friction(ModelBase):
         return np.einsum("ikd,kl->ild", E, self.force_coeff[self.N_basis_elt :])  # np.matmul(self.force_coeff[self.N_basis_elt :, :], E.T)
 
 
-class Pos_gle_no_vel_basis(ModelBase):
+class Pos_gle_no_vel_basis(Pos_gle):
     """
     Use basis function dependent of the position only
     """
@@ -546,7 +564,7 @@ class Pos_gle_no_vel_basis(ModelBase):
             raise ValueError("Basis evaluation goal not specified")
 
 
-class Pos_gle_const_kernel(ModelBase):
+class Pos_gle_const_kernel(Pos_gle):
     """
     A derived class in which we the kernel is computed independent of the position
     """
@@ -568,7 +586,7 @@ class Pos_gle_const_kernel(ModelBase):
             grad = np.zeros((bk.shape[0], self.dim_obs, self.dim_obs))
             for i in range(self.dim_obs):
                 grad[:, i, i] = 1.0
-            return xr.DataArray(grad, dims=("time", "dim_basis", "dim_x"))  # TODO: update to xarray
+            return xr.DataArray(grad, dims=("time", "dim_basis", "dim_x"))
         elif compute_for == "corrs":
             return bk, xva["v"].rename({"dim_x": "dim_basis"}), xva["a"].rename({"dim_x": "dim_basis"})
         else:
@@ -598,7 +616,7 @@ class Pos_gle_const_kernel(ModelBase):
         return self.force_eval(x, coeffs)  # - self.linear_force_part * x["x"].data  # Return the force as array (nb of evalution point x dim_obs)
 
 
-class Pos_gle_hybrid(ModelBase):
+class Pos_gle_hybrid(Pos_gle):
     """
     Implement the hybrid projector of arXiv:2202.01922
     """
@@ -705,6 +723,44 @@ class Pos_gle_overdamped(ModelBase):
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="pmf")
         pmf = -1 * np.einsum("ik,kl->il", E, coeffs) / kT
         return pmf - float(set_zero) * np.min(pmf)
+
+    def evolve_volterra(self, G0, lenTraj, method="trapz", trunc_ind=None):
+        """
+        Evolve in time the integro-differential equation.
+        This assume that the GLE is a linear GLE (i.e. the set of basis function is on the left and right of the equality)
+
+        Parameters
+        ----------
+        G0 : array
+            Initial value of the correlation
+        lenTraj : int
+            Length of the time evolution
+        method : str, default="trapz"
+            Method that is used to discretize the continuous Volterra equations
+        trunc_ind: int, default= self.trunc_ind
+            Truncate the length of the memory to this value
+        """
+        if self.force_coeff.shape[0] != self.force_coeff.shape[1] or self.kernel.shape[1] != self.kernel.shape[2]:
+            raise ValueError("Cannot evolve volterra equation if the coefficients are not square")
+
+        if G0.shape[0] != self.kernel.shape[-1]:
+            raise ValueError("Wrong shape for initial value")
+
+        if trunc_ind is None or trunc_ind <= 0:
+            trunc_ind = self.kernel.shape[0]
+
+        G0 = np.asarray(G0)
+        coeffs_force = self.force_coeff.to_numpy()
+        coeffs_ker = self.kernel.to_numpy()[:trunc_ind, :, :]
+        # TODO : A réimplémenter en fortran avec les coeffs en xarray
+        # Modifier le code fortran pour séparer l'évolution en temps du calcul de la dérivée ce qui sera plus pratique pour le calcul du flux
+        if method == "rect":
+            res = solve_ide_rect(coeffs_ker, G0, coeffs_force, lenTraj, self.dt)  # TODO it might worth transpose all the code for the kernel
+        elif method == "trapz":
+            res = solve_ide_trapz(coeffs_ker, G0, coeffs_force, lenTraj, self.dt)
+        elif method == "trapz_stab":
+            res = solve_ide_trapz_stab(coeffs_ker, G0, coeffs_force, lenTraj, self.dt)
+        return np.arange(lenTraj) * self.dt, res
 
 
 # class Pos_gle_overdamped_const_kernel(ModelBase):

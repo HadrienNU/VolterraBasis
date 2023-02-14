@@ -24,6 +24,7 @@ class LinearFeatures(TransformerMixin):
         if isinstance(describe_result, np.ndarray):
             describe_result = minimal_describe(describe_result)
         self.n_output_features_ = describe_result.mean.shape[0]
+        self.dim_out_basis = 1
         if self.centered:
             self.mean_ = describe_result.mean
         else:
@@ -65,6 +66,7 @@ class PolynomialFeatures(TransformerMixin):
         if isinstance(describe_result, np.ndarray):
             describe_result = quick_describe(describe_result)
         self.n_output_features_ = describe_result.mean.shape[0] * self.degree
+        self.dim_out_basis = 1
         return self
 
     def basis(self, X):
@@ -123,6 +125,7 @@ class FourierFeatures(TransformerMixin):
         if isinstance(describe_result, np.ndarray):
             describe_result = quick_describe(describe_result)
         self.n_output_features_ = describe_result.mean.shape[0] * self.order
+        self.dim_out_basis = 1
         return self
 
     def basis(self, X):
@@ -199,6 +202,7 @@ class SplineFctFeatures(TransformerMixin):
         self.t = knots  # knots are position along the axis of the knots
         self.c = coeffs
         self.const_removed = False
+        self.dim_out_basis = 1
 
     def fit(self, describe_result):
         if isinstance(describe_result, np.ndarray):
@@ -239,6 +243,7 @@ class FeaturesCombiner(TransformerMixin):
         for b in self.basis_set:
             b.fit(describe_result)
         self.n_output_features_ = np.sum([b.n_output_features_ for b in self.basis_set])
+        self.dim_out_basis = 1
         return self
 
     def basis(self, X):

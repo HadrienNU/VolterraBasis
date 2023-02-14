@@ -57,7 +57,8 @@ def test_estimator(traj_list, n_jobs, request):
 
 
 @pytest.mark.parametrize("traj_list", ["numpy", "dask"], indirect=True)
-def test_gfpe(traj_list):
+@pytest.mark.parametrize("method", ["rect", "trapz", "trapz_stab"])
+def test_gfpe(traj_list, method):
     estimator = vb.Estimator_gle(traj_list, vb.Pos_gle_overdamped, bf.BSplineFeatures(10, remove_const=False), trunc=10, saveall=False, verbose=True)
     estimator.to_gfpe()
     assert estimator.model.dim_obs == 10
@@ -73,6 +74,14 @@ def test_gfpe(traj_list):
 
     model = estimator.compute_kernel(method="trapz")
     assert model.kernel.shape == (1999, 10, 10)
+
+    # time, bkbk = model.evolve_volterra(estimator.bkbkcorrw.isel(time_trunc=0), 500, method=method)
+    #
+    # assert bkbk.shape == (10, 10, 500)
+
+    # time, flux = model.flux_from_volterra(bkbk)
+    #
+    # assert flux.shape == (500, 10)
 
 
 # Parametrize test on correlation computation method
