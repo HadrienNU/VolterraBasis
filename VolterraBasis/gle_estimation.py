@@ -10,11 +10,13 @@ from .correlation import correlation_1D, correlation_ND, correlation_direct_1D, 
 from .fkernel import kernel_first_kind_trapz, kernel_first_kind_rect, kernel_first_kind_midpoint, kernel_second_kind_rect, kernel_second_kind_trapz
 
 
-def inv_xarray(arr):  # TODO, comme on vrai à chaque fois on veut faire G^{-1}*qc on peut juste remplacer ça par une fct qui resout le porblème Gx = b
+def solve_linear(G, b):  # Write also a sparse version
     """
-    Wrapper to numpy linalg.inv function
+    Solve the linear problem Gx = b
     """
-    return xr.DataArray(np.linalg.inv(arr), dims=("dim_basis'", "dim_basis"))
+    print(G)
+    x_np = np.linalg.inv(G.values) @ b.values
+    return xr.DataArray(x_np, dims=b.dims)
 
 
 class Estimator_gle(object):
@@ -23,7 +25,7 @@ class Estimator_gle(object):
     holding all data and the extracted memory kernels.
     """
 
-    def __init__(self, xva_arg, model_class, basis, trunc=1.0, L_obs=None, saveall=True, prefix="", verbose=True, **kwargs):
+    def __init__(self, xva_arg, model_class, basis, trunc=1.0, L_obs=None, saveall=True, prefix="", verbose=True, n_jobs=1, **kwargs):
         """
         Create an instance of the Pos_gle class.
 
@@ -77,7 +79,11 @@ class Estimator_gle(object):
             print("Found trajectories with the following lengths:")
             print(self.weights)
 
-        self.loop_over_trajs = self._loop_over_trajs_serial
+        self.n_jobs = int(n_jobs)
+        if self.n_jobs <= 1:
+            self.loop_over_trajs = self._loop_over_trajs_serial
+        else:
+            self.loop_over_trajs = self._loop_over_trajs_parallel
 
         if L_obs is None:  # Default value given by the class of the model
             L_obs = model_class.set_of_obs[-1]
@@ -168,6 +174,19 @@ class Estimator_gle(object):
                 res[i] += arr * weight / self.weightsum
         return res
 
+    def _loop_over_trajs_parallel(self, func, model, **kwargs):
+        """
+        A generator for iteration over trajectories
+        """
+        from joblib import Parallel, delayed
+
+        array_res = Parallel(n_jobs=self.n_jobs)(delayed(func)(weight, xva, model, **kwargs) for weight, xva in zip(self.weights, self.xva_list))
+        res = [0.0] * len(array_res[0])
+        for weight, single_res in zip(self.weights, array_res):
+            for i, arr in enumerate(single_res):
+                res[i] += arr * weight / self.weightsum
+        return res
+
     def compute_basis_mean(self, basis_type="force"):
         """
         Compute mean value of the basis function
@@ -214,7 +233,7 @@ class Estimator_gle(object):
         if self.verbose:
             print("Calculate kernel gram...")
         pos_inv_mass, avg_gram = self.loop_over_trajs(self._compute_square_vel_pos, self.model)
-        self.model.inv_mass_coeff = np.dot(inv_xarray(avg_gram), pos_inv_mass)
+        self.model.inv_mass_coeff = solve_linear(avg_gram, pos_inv_mass)
         return self.model
 
     def compute_mean_force(self):
@@ -226,7 +245,7 @@ class Estimator_gle(object):
         avg_disp, avg_gram = self.loop_over_trajs(self._projection_on_basis, self.model)
         # print(avg_gram)
         self.model.gram_force = avg_gram
-        self.model.force_coeff = xr.dot(inv_xarray(avg_gram), avg_disp).rename({"dim_basis'": "dim_basis"})  # TODO
+        self.model.force_coeff = solve_linear(avg_gram, avg_disp)
         print(self.model.force_coeff)
         return self.model
 
@@ -292,7 +311,7 @@ class Estimator_gle(object):
         if k0 is None and method in ["trapz", "second_kind_rect", "second_kind_trapz"]:  # Then we should compute initial value from time derivative at zero
             if self.dotbkdxcorrw is None:
                 raise Exception("Need correlation with derivative functions to compute the kernel using this method or provide initial value.")
-            k0 = xr.dot(inv_xarray(self.bkbkcorrw.isel(time_trunc=0)), self.dotbkdxcorrw.isel(time_trunc=0)).to_numpy()
+            k0 = solve_linear(self.bkbkcorrw.isel(time_trunc=0), self.dotbkdxcorrw.isel(time_trunc=0)).to_numpy()  #   xr.dot(inv_xarray(self.bkbkcorrw.isel(time_trunc=0)), self.dotbkdxcorrw.isel(time_trunc=0)).to_numpy()
             if self.verbose:
                 print("K0", k0)
                 # print("Gram", self.bkbkcorrw[0, :, :])
@@ -429,14 +448,14 @@ class Estimator_gle(object):
         # print(E_force, model.force_coeff)
         ortho_xva = xva[model.L_obs] - xr.dot(E_force, model.force_coeff)  # TODO C'est pas dim_x le deuxième c'est dim_Lobs
         # print(ortho_xva.head(), E.head())
-        bkdxcorrw = xr.apply_ufunc(func, E, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
-        bkbkcorrw = xr.apply_ufunc(func, E.rename({"dim_basis": "dim_basis'"}), E, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
+        bkdxcorrw = xr.apply_ufunc(func, E, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, dask_gufunc_kwargs={"output_sizes": {"time_trunc": model.trunc_ind}, "allow_rechunk": True}, vectorize=vectorize, dask="parallelized")
+        bkbkcorrw = xr.apply_ufunc(func, E.rename({"dim_basis": "dim_basis'"}), E, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, dask_gufunc_kwargs={"output_sizes": {"time_trunc": model.trunc_ind}, "allow_rechunk": True}, vectorize=vectorize, dask="parallelized")
         if second_order_method:
-            dotbkdxcorrw = xr.apply_ufunc(func, dE, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
-            dotbkbkcorrw = xr.apply_ufunc(func, dE.rename({"dim_basis": "dim_basis'"}), E, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, vectorize=vectorize, dask="forbidden")
+            dotbkdxcorrw = xr.apply_ufunc(func, dE, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, dask_gufunc_kwargs={"output_sizes": {"time_trunc": model.trunc_ind}, "allow_rechunk": True}, vectorize=vectorize, dask="parallelized")
+            dotbkbkcorrw = xr.apply_ufunc(func, dE.rename({"dim_basis": "dim_basis'"}), E, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, dask_gufunc_kwargs={"output_sizes": {"time_trunc": model.trunc_ind}, "allow_rechunk": True}, vectorize=vectorize, dask="parallelized")
         else:
             # We can compute only the first element then, that is faster
-            dotbkdxcorrw = xr.dot(dE, ortho_xva).expand_dims({"time_trunc": 1}) / weight  # Maybe reshape to add a dimension of size 1 and name time_trunc
+            dotbkdxcorrw = xr.dot(dE, ortho_xva).expand_dims({"time_trunc": 1}) / weight
             dotbkbkcorrw = np.array([[0.0]])
         return bkdxcorrw, dotbkdxcorrw, bkbkcorrw, dotbkbkcorrw
 

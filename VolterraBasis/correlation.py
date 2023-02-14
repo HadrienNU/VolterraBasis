@@ -67,7 +67,7 @@ def correlation_direct_ND(a, b=None, trunc=None):
         b = a
     # TODO: vérifier le type de l'array a et créer un array vide du même type
     res = np.zeros((a.shape[0], b.shape[0], len_trunc))
-    res[:, :, 0] = np.sum(a * b, axis=-1) / len_dat
+    res[:, :, 0] = (a * b).sum(axis=-1) / len_dat
     for n in range(1, len_trunc):
-        res[:, :, n] = np.sum(a[..., :-n] * b[..., n:], axis=-1) / (len_dat - n)
+        res[:, :, n] = (a[..., :-n] * b[..., n:]).sum(axis=-1) / (len_dat - n)
     return res

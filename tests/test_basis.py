@@ -3,11 +3,6 @@ import numpy as np
 from scipy.stats import describe
 import VolterraBasis.basis as bf
 
-"""
-Pour les tests: on peut tester:
-- On peut faire un ensemble de tests pour toutes les fonctions de bases (vérification de la shape de sortie)
-"""
-
 
 @pytest.mark.parametrize(
     "basis,parameters,expected",

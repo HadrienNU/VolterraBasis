@@ -1,9 +1,10 @@
 import numpy as np
+import dask.array as da
 import xarray as xr
 import scipy.interpolate
 from ._version import __version__
 
-from .models import Pos_gle, Pos_gle_with_friction, Pos_gle_no_vel_basis, Pos_gle_const_kernel, Pos_gle_hybrid, Pos_gle_overdamped, Pos_gle_overdamped_const_kernel
+from .models import Pos_gle, Pos_gle_with_friction, Pos_gle_no_vel_basis, Pos_gle_const_kernel, Pos_gle_hybrid, Pos_gle_overdamped  # , Pos_gle_overdamped_const_kernel
 from .gle_estimation import Estimator_gle
 
 # from .pos_gle_fem import Pos_gle_fem
@@ -54,7 +55,8 @@ def xframe(x, time, v=None, a=None, fix_time=False, round_time=1.0e-4, dt=-1):
     a : numpy array, default=None
         Acceleration if computed externally
     """
-    x = np.asarray(x)
+    if not (isinstance(x, np.ndarray) or isinstance(x, da.Array)):
+        x = np.asarray(x)
     if x.ndim == 1:
         x = x.reshape(-1, 1)
     time = np.asarray(time)

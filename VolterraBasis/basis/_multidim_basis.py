@@ -128,7 +128,7 @@ class TensorialBasis2D(TransformerMixin):
 #         return self.deriv(X, deriv_order=2)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     from _local_features import BSplineFeatures
 
     # Plot basis

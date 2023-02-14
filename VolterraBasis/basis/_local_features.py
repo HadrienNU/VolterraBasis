@@ -233,7 +233,6 @@ class SmoothIndicatorFeatures(TransformerMixin):
         else:
             features[(Ellipsis, slice(self.n_states, self.n_states + 1)) + (0,) * deriv_order] = der_next
         return features
-        return features
 
     def hessian(self, X):
         return self.deriv(X, deriv_order=2)
@@ -242,7 +241,7 @@ class SmoothIndicatorFeatures(TransformerMixin):
         raise NotImplementedError
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     import matplotlib.pyplot as plt
 
     x_range = np.linspace(-10, 10, 10).reshape(-1, 1)

@@ -295,7 +295,7 @@ class FeaturesCombiner(TransformerMixin):
 #         return self.spl_.antiderivative(order)(X)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     import matplotlib.pyplot as plt
     from scipy.stats import describe
 

@@ -1,21 +1,17 @@
 import pytest
 import os
 import numpy as np
+import dask.array as da
 import VolterraBasis as vb
 import VolterraBasis.basis as bf
 
 
-"""
-Pour les tests: on peut tester:
-- Si les fonctions compute_... donnent des résultast avec la bonne shape
-- On peut faire un ensemble de tests pour toutes les fonctions de bases (vérification de la shape de sortie)
-"""
-
-
 @pytest.fixture
-def traj_list():
+def traj_list(request):
     file_dir = os.path.dirname(os.path.realpath(__file__))
     trj = np.loadtxt(os.path.join(file_dir, "../examples/example_lj.trj"))
+    if request.param == "dask":
+        trj = da.from_array(trj)
     xva_list = []
     print(trj.shape)
     for i in range(1, trj.shape[1]):
@@ -25,9 +21,11 @@ def traj_list():
     return xva_list
 
 
-# Faire un test parametrisé en fonction du model
-def test_estimator(traj_list):
-    estimator = vb.Estimator_gle(traj_list, vb.Pos_gle, bf.BSplineFeatures(10), trunc=10, saveall=False, verbose=True)
+@pytest.mark.parametrize("traj_list", ["numpy", "dask"], indirect=True)
+@pytest.mark.parametrize("n_jobs", [1, 4])
+def test_estimator(traj_list, n_jobs, request):
+
+    estimator = vb.Estimator_gle(traj_list, vb.Pos_gle, bf.BSplineFeatures(10), trunc=10, saveall=False, verbose=True, n_jobs=n_jobs)
     assert estimator.model.dim_x == 1
 
     model = estimator.compute_mean_force()
@@ -58,6 +56,7 @@ def test_estimator(traj_list):
     assert corrs_noise.shape == (1998, 1, 1)
 
 
+@pytest.mark.parametrize("traj_list", ["numpy", "dask"], indirect=True)
 def test_gfpe(traj_list):
     estimator = vb.Estimator_gle(traj_list, vb.Pos_gle_overdamped, bf.BSplineFeatures(10, remove_const=False), trunc=10, saveall=False, verbose=True)
     estimator.to_gfpe()
@@ -77,6 +76,7 @@ def test_gfpe(traj_list):
 
 
 # Parametrize test on correlation computation method
+@pytest.mark.parametrize("traj_list", ["numpy", "dask"], indirect=True)
 @pytest.mark.parametrize("method,vectorize", [("fft", False), ("fft", True), ("direct", False), ("direct", True)])
 def test_corrs_method(traj_list, method, vectorize):
     estimator = vb.Estimator_gle(traj_list, vb.Pos_gle, bf.BSplineFeatures(10, remove_const=False), trunc=1, saveall=False, verbose=False)
@@ -91,6 +91,7 @@ def test_corrs_method(traj_list, method, vectorize):
 
 
 # Parametrize test on invertion method
+@pytest.mark.parametrize("traj_list", ["dask"], indirect=True)
 @pytest.mark.parametrize("method,expected", [("rect", (2000, 9, 1)), ("midpoint", (1000, 9, 1)), ("midpoint_w_richardson", (333, 9, 1)), ("trapz", (1999, 9, 1)), ("second_kind_rect", (2000, 9, 1)), ("second_kind_trapz", (2000, 9, 1))])
 def test_kernel_method(traj_list, method, expected):
     estimator = vb.Estimator_gle(traj_list, vb.Pos_gle, bf.BSplineFeatures(10, remove_const=False), trunc=10, saveall=False, verbose=False)
