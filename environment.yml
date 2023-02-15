@@ -4,8 +4,7 @@ channels:
 dependencies:
   - numpy
   - scipy
-  - scikit-learn
-  - pandas
+  - xarray
   - libgfortran-ng
   - sphinx-gallery
   - numpydoc
