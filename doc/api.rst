@@ -17,7 +17,16 @@ Loading trajectories
 
    compute_a
 
-Memory kernel estimation
+ Memory kernel estimation
+ =========================
+
+ .. autosummary::
+    :toctree: generated/
+    :template: class.rst
+
+    Estimator_gle
+
+ Available models of GLE
 =========================
 
 .. autosummary::
@@ -51,6 +60,12 @@ Basis Features
 
    VolterraBasis.basis.BSplineFeatures
 
+   VolterraBasis.basis.FEMScalarFeatures
+
+   VolterraBasis.basis.SmoothIndicatorFeatures
+
    VolterraBasis.basis.SplineFctFeatures
 
    VolterraBasis.basis.FeaturesCombiner
+
+   VolterraBasis.basis.TensorialBasis2D

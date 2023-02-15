@@ -6,7 +6,7 @@
 Welcome to VolterraBasis's documentation!
 ============================================
 
-This project compute position-dependent memory kernel for Generalized Langevin Equations. Please refer to https://arxiv.org/abs/2201.02457 for a detailed description of the algorithm.
+This project compute position-dependent memory kernel for Generalized Langevin Equations. Please refer to  Position-dependent memory kernel in generalized Langevin equations: Theory and numerical estimation, J. Chem. Phys. 156, 244105 (2022); https://doi.org/10.1063/5.0094566, also available at https://arxiv.org/abs/2201.02457 for a detailed description of the algorithm.
 
 Installation
 ------------------
@@ -18,12 +18,12 @@ to install.
 Getting Started
 ------------------
 
-To run the code, you should first instanciate one of the Pos_gle class
+To run the code, you should first instanciate the Estimator_gle class
 
 
-    >>> mymem = Pos_gle(trajs_list, basis)
+    >>> mymem =  Estimator_gle(traj_list, vb.Pos_gle, bf.BSplineFeatures(Nsplines))
 
-The mandatory arguments are a list of trajectories and a funcionnal basis.
+The mandatory arguments are a list of trajectories, the choice of a model and a funcionnal basis.
 
 The list of trajectories should be created through the :meth:`VolterraBasis.xframe` method such as
 
