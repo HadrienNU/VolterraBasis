@@ -1,0 +1,11 @@
+name: VolterraBasis
+channels:
+  - conda-forge
+dependencies:
+  - numpy
+  - scipy
+  - scikit-learn
+  - pandas
+  - libgfortran-ng
+  - sphinx-gallery
+  - numpydoc
