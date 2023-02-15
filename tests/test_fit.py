@@ -26,9 +26,9 @@ def kernel():
     return model.kernel
 
 
-@pytest.mark.parametrize("type", ["exp", "sech", "gaussian", "sech_one", "sech_two", "prony"])
-def test_fit_memory(kernel, type):
-    params = vb.memory_fit(kernel["time_kernel"], kernel[:, 0, 0], type=type)
-    fitted_mem = vb.memory_fit_eval(kernel["time_kernel"], params)
+@pytest.mark.parametrize("type,kwargs", [("exp", {}), ("sech", {}), ("gaussian", {}), ("sech_one", {}), ("sech_two", {}), ("prony", {"N_keep": 100})])
+def test_fit_memory(kernel, type, kwargs):
+    params = vb.memory_fit_kernel(kernel["time_kernel"], kernel, type=type, **kwargs)
+    fitted_mem = vb.memory_kernel_eval(kernel["time_kernel"], params)
 
     assert fitted_mem.shape == kernel.shape

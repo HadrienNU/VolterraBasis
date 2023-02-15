@@ -131,7 +131,7 @@ def centroid_driven_mesh(data, bins=100, boundary_vertices=None, simplify_hull=0
     return vertices, tri.simplices
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     import matplotlib.pyplot as plt
 
     points = np.random.rand(5000, 2)

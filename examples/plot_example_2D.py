@@ -36,7 +36,8 @@ print(model.N_basis_elt, model.N_basis_elt_force, model.N_basis_elt_kernel)
 # print(mymem.basis.b1.n_output_features_, mymem.basis.b2.n_output_features_)
 estimator.compute_corrs()
 model = estimator.compute_kernel(method="trapz")
-time, kernel = model.kernel_eval([[1.5, 1.0], [2.0, 1.5], [2.5, 1.0]])
+kernel = model.kernel_eval([[1.5, 1.0], [2.0, 1.5], [2.5, 1.0]])
+time = kernel["time_kernel"]
 print(time.shape, kernel.shape)
 # To find a correct parametrization of the space
 bins = np.histogram_bin_edges(xvaf["x"], bins=15)

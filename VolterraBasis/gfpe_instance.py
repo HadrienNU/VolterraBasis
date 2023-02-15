@@ -1,10 +1,8 @@
 import numpy as np
-
 from .pos_gle_base import Pos_gle_base
-from .fkernel import solve_ide_rect, solve_ide_trapz, solve_ide_trapz_stab
 
 
-class Pos_gfpe(Pos_gle_base):
+class Pos_gfpe(Pos_gle_base):  # pragma: no cover
     """
     Linear projection of the basis on the basis. The resulting Volterra equation is a generalized Fokker Planck equation
     """
@@ -40,7 +38,7 @@ class Pos_gfpe(Pos_gle_base):
         return s_range, det_laplace, eig_vals
 
 
-class Pos_gfpe_fem(Pos_gfpe):
+class Pos_gfpe_fem(Pos_gfpe):  # pragma: no cover
     """
     Linear projection of the basis on the basis. The resulting Volterra equation is a generalized Fokker Planck equation
     """

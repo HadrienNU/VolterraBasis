@@ -20,7 +20,6 @@ def traj_list(request):
     if request.param == "dask":
         trj = da.from_array(trj)
     xva_list = []
-    print(trj.shape)
     for i in range(1, trj.shape[1]):
         xf = vb.xframe(trj[:, 1], trj[:, 0] - trj[0, 0])
         xvaf = vb.compute_va(xf)
@@ -56,18 +55,21 @@ def test_pos_gle(traj_list, model, basis, parameters):
 
     assert force.shape == (len(xfa), 1)
 
+    model = estimator.compute_effective_mass()
     pmf = model.pmf_eval(xfa)
 
     assert pmf.shape == (len(xfa), 1)
-    #
-    # model.inv_mass_eval(xfa)
-    #
+
+    # model = estimator..compute_pos_effective_mass()
+    # mass_pos = model.inv_mass_eval(xfa)
+    # assert mass_pos.shape == (len(xfa), 1, 1)
+
     estimator.compute_corrs()
     model = estimator.compute_kernel(method="trapz")
 
-    # time, noise, a, force, mem = model.compute_noise(traj_list[0])
-    #
-    # assert noise.shape == traj_list[0].shape
+    time, noise, a, force, mem = model.compute_noise(traj_list[0])
+
+    assert noise.shape == traj_list[0]["a"].shape
 
     kernel = model.kernel_eval(xfa)
 
@@ -111,18 +113,17 @@ def test_pos_gle_w_friction(traj_list, basis, parameters):
 
     assert friction.shape == (len(xfa), 1, 1)
     #
-    # pmf = model.pmf_eval(xfa)
-    #
-    # assert pmf.shape == (len(xfa), 1)
+    pmf = model.pmf_eval(xfa)
+    assert pmf.shape == (len(xfa), 1)
     #
     # model.inv_mass_eval(xfa)
     #
     estimator.compute_corrs()
     model = estimator.compute_kernel(method="trapz")
 
-    # time, noise, a, force, mem = model.compute_noise(traj_list[0])
-    #
-    # assert noise.shape == traj_list[0].shape
+    time, noise, a, force, mem = model.compute_noise(traj_list[0])
+
+    assert noise.shape == traj_list[0].shape
 
     kernel = model.kernel_eval(xfa)
 
@@ -139,4 +140,57 @@ def test_pos_gle_w_friction(traj_list, basis, parameters):
     np.testing.assert_allclose(kernel.values, new_kernel.values)
 
 
-# Pour les 2 suivantes faire des tests en plus Pos_gle_with_friction Pos_gle_hybrid
+@pytest.mark.skip(reason="FEM not working or now")
+@pytest.mark.parametrize("model", [vb.Pos_gle, vb.Pos_gle_no_vel_basis, vb.Pos_gle_const_kernel, vb.Pos_gle_overdamped, vb.Pos_gle_hybrid])
+def test_fem(model):
+    import skfem
+
+    file_dir = os.path.dirname(os.path.realpath(__file__))
+    trj = np.loadtxt(os.path.join(file_dir, "../examples/example_lj.trj"))
+
+    vertices, tri = bf.centroid_driven_mesh(trj[:, 1:3], bins=25)
+
+    m = skfem.MeshTri(vertices.T, tri.T)
+    e = skfem.ElementTriP1()  # skfem.ElementTriRT0()  #
+    basis_fem = skfem.CellBasis(m, e)
+
+    xva_list = []
+    trj = da.from_array(trj)
+    xf = vb.xframe(trj[:, 1:3], trj[:, 0] - trj[0, 0])
+    xvaf = vb.compute_va(xf)
+    xva_list.append(xvaf)
+    estimator = vb.Estimator_gle(xva_list, model, bf.FEMScalarFeatures(basis_fem), trunc=10, saveall=False, verbose=False)
+    model = estimator.compute_mean_force()
+
+    xfa = trj[:10, 1:3]
+
+    force = model.force_eval(xfa)
+
+    assert force.shape == xfa.shape
+
+    pmf = model.pmf_eval(xfa)
+
+    assert pmf.shape == xfa.shape
+    #
+    # model.inv_mass_eval(xfa)
+    #
+    estimator.compute_corrs(second_order_method=False)
+    model = estimator.compute_kernel(method="rect")
+
+    time, noise, a, force, mem = model.compute_noise(traj_list[0])
+
+    assert noise.shape == traj_list[0]["a"].shape
+
+    kernel = model.kernel_eval(xfa)
+
+    assert kernel.shape == (model.trunc_ind - 1, 1, xfa.shape[0], 2)
+
+    coeffs = model.save_model()
+    print(coeffs)
+    new_model = model.load_model(model.basis, coeffs)
+
+    assert (model.force_coeff == new_model.force_coeff).all()
+
+    new_kernel = new_model.kernel_eval(xfa)
+
+    np.testing.assert_allclose(kernel.values, new_kernel.values)

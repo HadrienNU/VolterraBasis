@@ -12,15 +12,14 @@ from .gle_estimation import Estimator_gle
 from .gle_integrate import Integrator_gle, Integrator_gle_const_kernel, KarhunenLoeveNoiseGenerator
 from .fit_memory import memory_fit, memory_fit_eval, memory_fit_kernel, memory_kernel_eval
 from .fit_prony import prony_inspect_data, prony_fit_times_serie, prony_fit_kernel, prony_series_eval, prony_series_kernel_eval
-from .correlation import correlation_ND as correlation
-from . import basis
-from .mesh_utils import *
+from .correlation import correlation_ND as correlation_fft
+from .correlation import correlation_direct_ND as correlation_direct
 
 __all__ = ["Pos_gle", "Pos_gle_with_friction", "Pos_gle_no_vel_basis", "Pos_gle_const_kernel", "Pos_gle_hybrid"]
 __all__ += ["Pos_gle_overdamped", "Pos_gle_overdamped_const_kernel"]
 __all__ += ["Trajectories_handler"]
 __all__ += ["Estimator_gle", "Integrator_gle"]
-__all__ += ["correlation"]
+__all__ += ["correlation_fft", "correlation_direct"]
 __all__ += ["memory_fit", "memory_fit_eval", "memory_fit_kernel", "memory_kernel_eval"]
 __all__ += ["prony_fit_times_serie", "prony_series_eval", "prony_fit_kernel", "prony_series_kernel_eval", "prony_inspect_data"]
 # __all__ += ["Pos_gle_fem", "Pos_gfpe_fem"]

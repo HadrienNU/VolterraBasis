@@ -64,6 +64,7 @@ def memory_fit(times, data, type="exp", **kwargs):
     """
     Fit a memory kernel using the type fonction
     """
+    times = np.asarray(times).squeeze()
     # Check format of the data
     if times.ndim > 1 or data.ndim > 1:
         raise ValueError("Incorrect shape of the data")
@@ -83,7 +84,7 @@ def memory_fit(times, data, type="exp", **kwargs):
         func = gaussian_fct
         p0 = [data[0], 0.1 / np.sqrt((times[1] - times[0]))]
     elif type in ["prony"]:
-        return type, prony_fit_times_serie(data, (times[1] - times[0]).ravel(), **kwargs)
+        return type, prony_fit_times_serie(data, (times[1] - times[0]).squeeze(), **kwargs)
     else:
         raise ValueError("Not implemented type")
     popt, pcov = scipy.optimize.curve_fit(func, times, data, p0=p0, **kwargs)
@@ -138,7 +139,7 @@ def memory_fit_kernel(times, kernel, type="exp", **kwargs):
     popt = [[0] * dim_basis for i in range(dim_x)]
     for d in range(dim_x):
         for k in range(dim_basis):
-            popt[d][k] = memory_fit(times.ravel(), kernel[:, k, d], type, **kwargs)[1]
+            popt[d][k] = memory_fit(np.asarray(times).squeeze(), kernel[:, k, d], type, **kwargs)[1]
     return type, popt
 
 
@@ -165,5 +166,5 @@ def memory_kernel_eval(times, params, type=None):
     fit = np.zeros((nb_times, dim_basis, dim_x))
     for d in range(dim_x):
         for k in range(dim_basis):
-            fit[:, k, d] = memory_fit_eval(times, popt[d][k], type=type)
+            fit[:, k, d] = memory_fit_eval(np.asarray(times), popt[d][k], type=type)
     return fit

@@ -11,7 +11,6 @@ from skfem import LinearForm, BilinearForm
 from skfem.helpers import dot
 from itertools import product
 import sparse
-from ._data_describe import quick_describe, minimal_describe
 
 
 class ElementFinder:
@@ -54,7 +53,7 @@ class ElementFinder:
 
     def find_element_ND(self, X, _search_all=False):
         tree_query = self.tree.query(X, 5)[1]
-        element_inds = np.empty((X.shape[0],), dtype=np.int)
+        element_inds = np.empty((X.shape[0],), dtype=int)
         for n, point in enumerate(X):  # Try to avoid loop
             i_e = tree_query[n, :]
             X_loc = self.mapping.invF((point.T)[:, None, None], tind=i_e)
@@ -75,9 +74,9 @@ class ElementFinder:
         return (X[0] >= 0) * (X[1] >= 0) * (X[2] >= 0) * (1 - X[0] - X[1] - X[2] >= -np.finfo(X.dtype).eps)
 
 
-class FEMFeatures(TransformerMixin):
+class FEMScalarFeatures(TransformerMixin):
     """
-    Finite elements features
+    Finite elements features for scalar basis
     """
 
     def __init__(self, basis: Basis):
@@ -87,54 +86,54 @@ class FEMFeatures(TransformerMixin):
         Parameters
         ----------
         """
-        self.basis = basis
+        self.basis_fem = basis
         self.const_removed = False
 
     def element_finder(self, x):
         # At first use, if not implement instancie the element finder
         if not hasattr(self, "element_finder_from_basis"):
-            self.element_finder_from_basis = ElementFinder(self.basis.mesh, mapping=self.basis.mapping)  # self.basis.mesh.element_finder(mapping=self.basis.mapping)
+            self.element_finder_from_basis = ElementFinder(self.basis_fem.mesh, mapping=self.basis_fem.mapping)  # self.basis_fem.mesh.element_finder(mapping=self.basis_fem.mapping)
         return self.element_finder_from_basis.find(x)
 
     def fit(self, describe_result):
-        if isinstance(describe_result, np.ndarray):
-            describe_result = minimal_describe(describe_result)
-        self.element_finder_from_basis = ElementFinder(self.basis.mesh, mapping=self.basis.mapping)
+        self.element_finder_from_basis = ElementFinder(self.basis_fem.mesh, mapping=self.basis_fem.mapping)
         # Find tensorial order of the basis and adapt dimension in consequence
-        test = self.basis.elem.gbasis(self.basis.mapping, self.basis.mapping.F(self.basis.mesh.p), 0)[0]
+        test = self.basis_fem.elem.gbasis(self.basis_fem.mapping, self.basis_fem.mapping.F(self.basis_fem.mesh.p), 0)[0]
         if len(test.shape) == 3:  # Vectorial basis
+            raise NotImplementedError("Unsupported Element, please use the FEMVectorFeatures")
             self.dim_out_basis = test.shape[0]
-            raise NotImplementedError("Unsupported FEM for now")
         elif len(test.shape) == 2:  # Scalar basis
             self.dim_out_basis = 1
-        self.n_output_features_ = self.basis.N
+        self.n_output_features_ = self.basis_fem.N
         return self
 
     def basis(self, X):
         nsamples, dim = X.shape
+        cells = self.element_finder(X)
         x = X.T
-        cells = self.basis.mesh.element_finder(mapping=self.basis.mapping)(*x)
-        pts = self.basis.mapping.invF(x[:, :, np.newaxis], tind=cells)
-        phis = np.array([self.basis.elem.gbasis(self.basis.mapping, pts, k, tind=cells)[0] for k in range(self.basis.Nbfun)]).flatten()  # TODO: vérifier la shape
+        # cells = self.basis_fem.mesh.element_finder(mapping=self.basis_fem.mapping)(*x)
+        pts = self.basis_fem.mapping.invF(x[:, :, np.newaxis], tind=cells)
+        phis = np.array([self.basis_fem.elem.gbasis(self.basis_fem.mapping, pts, k, tind=cells)[0] for k in range(self.basis_fem.Nbfun)])  # TODO: vérifier la shape
         return sparse.COO(
-            (np.tile(np.arange(nsamples), self.basis.Nbfun), self.basis.element_dofs[:, cells].flatten()),
-            phis,
+            (np.tile(np.arange(nsamples), self.basis_fem.Nbfun), self.basis_fem.element_dofs[:, cells].flatten()),
+            np.ravel(phis),
             shape=(nsamples, self.n_output_features_),
         )
 
     def deriv(self, X, deriv_order=1):
         nsamples, dim = X.shape
+        cells = self.element_finder(X)
         x = X.T
-        cells = self.basis.mesh.element_finder(mapping=self.basis.mapping)(*x)  # Il faudrait trouver un moyen de mettre en cache ce résultat
-        pts = self.basis.mapping.invF(x[:, :, np.newaxis], tind=cells)
-        phis = np.array([self.basis.elem.gbasis(self.basis.mapping, pts, k, tind=cells)[0].grad for k in range(self.basis.Nbfun)])  # TODO: vérifier la shape et en extraire les diverses dimensions
+        # cells = self.basis_fem.mesh.element_finder(mapping=self.basis_fem.mapping)(*x)  # TODO: Il faudrait trouver un moyen de mettre en cache ce résultat
+        pts = self.basis_fem.mapping.invF(x[:, :, np.newaxis], tind=cells)
+        phis = np.array([self.basis_fem.elem.gbasis(self.basis_fem.mapping, pts, k, tind=cells)[0].grad.transpose([1, 2, 0]) for k in range(self.basis_fem.Nbfun)])  # TODO: vérifier la shape et en extraire les diverses dimensions
         return sparse.COO(
-            (np.tile(np.arange(nsamples), self.basis.Nbfun), self.basis.element_dofs[:, cells].flatten()),
-            phis,
-            shape=(nsamples, self.n_output_features_, self.dim_x),
+            (np.tile(np.arange(nsamples), dim * self.basis_fem.Nbfun), np.tile(self.basis_fem.element_dofs[:, cells].flatten(), dim), np.repeat(np.arange(dim), nsamples * self.basis_fem.Nbfun)),  # Le dernier array doit être 000011111222
+            np.ravel(phis),
+            shape=(nsamples, self.n_output_features_, dim),
         )
 
-    def hessian(self, X):
+    def hessian(self, X):  # Only for Elementglobal
         raise NotImplementedError
 
     def antiderivative(self, X, order=1):
@@ -145,25 +144,31 @@ class FEMFeatures(TransformerMixin):
 
 if __name__ == "__main__":  # pragma: no cover
     import matplotlib.pyplot as plt
+    import skfem
 
-    x_range = np.linspace(-10, 10, 10).reshape(-1, 1)
+    m = skfem.MeshLine(np.linspace(0, 5, 4 + 1))
+    base_elem = skfem.ElementLineP2()  # skfem.ElementTriRT0()  #
+    # e = skfem.ElementVector(base_elem)
+    basis_fem = skfem.CellBasis(m, base_elem)
+
+    x_range = np.linspace(0, 5, 10).reshape(-1, 1)
     # basis = BSplineFeatures(6, k=3)
-    basis = FEMFeatures([[-5, -2], [2, 3], [5, 7]], "tricube", periodic=True)
+    basis = FEMScalarFeatures(basis_fem)
     basis.fit(x_range)
     print(x_range.shape)
     print("Basis")
     print(basis.basis(x_range).shape)
     print("Deriv")
     print(basis.deriv(x_range).shape)
-    print("Hessian")
-    print(basis.hessian(x_range).shape)
+    # print("Hessian")
+    # print(basis.hessian(x_range).shape)
 
     # Plot basis
-    x_range = np.linspace(-10, 10, 150).reshape(-1, 1)
+    x_range = np.linspace(0, 5, 150).reshape(-1, 1)
     # basis = basis.fit(x_range)
     # basis = LinearFeatures().fit(x_range)
-    y = basis.basis(x_range)
-    z = basis.deriv(x_range)
+    y = basis.basis(x_range).todense()
+    z = basis.deriv(x_range).todense()
     plt.grid()
     for n in range(y.shape[1]):
         plt.plot(x_range[:, 0], y[:, n])

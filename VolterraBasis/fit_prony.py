@@ -120,6 +120,7 @@ def prony_inspect_data(data, thres=None, N_keep=None):
     Return filtered data, that can be compared to orignal data.
     If there are still issue, try truncating the data to remove more noise.
     """
+    data = np.asarray(data)
     y = data.ravel() / data.ravel()[0]
     n = (y.shape[0] - 1) // 2
     hankel = scipy.linalg.hankel(y[: n + 1], y[n : 2 * n + 1])
@@ -181,6 +182,7 @@ def prony_series_eval(times, y0, A):
         A :
             Result of the prony fitting.
     """
+    times = np.asarray(times).squeeze()
     nb_times = times.shape[0]
     fit = np.zeros((nb_times,))
     for i, t in enumerate(times.flatten()):  # TODO: Implement with linear system
@@ -207,11 +209,12 @@ def prony_fit_kernel(times, kernel, thres=None, N_keep=None):
     Note: Smaller N_keep or higher threshold result in faster analysis. Result can also depend strongly of the value of either thres or N_keep
     """
     _, dim_basis, dim_x = kernel.shape
-    dt = (times[1] - times[0]).values
+    times = np.asarray(times).squeeze()
+    dt = times[1] - times[0]
     list_A = [[0] * dim_basis for i in range(dim_x)]
     for d in range(dim_x):
         for k in range(dim_basis):
-            list_A[d][k] = prony_fit_times_serie(kernel[:, k, d].values, dt, thres=thres, N_keep=N_keep)
+            list_A[d][k] = prony_fit_times_serie(np.asarray(kernel[:, k, d]), dt, thres=thres, N_keep=N_keep)
     return list_A
 
 
@@ -226,12 +229,13 @@ def prony_series_kernel_eval(times, list_A):
         list_A:
             The result of fit_kernel
     """
+    times = np.asarray(times).squeeze()
     nb_times = times.shape[0]
     dim_x = len(list_A)
     dim_basis = len(list_A[0])
     fit = np.zeros((nb_times, dim_basis, dim_x))
     for d in range(dim_x):
         for k in range(dim_basis):
-            for i, t in enumerate(times.flatten()):
+            for i, t in enumerate(times.squeeze()):
                 fit[i, k, d] = list_A[d][k][0] * scipy.linalg.expm(t * list_A[d][k][1])[0, 0]
     return fit

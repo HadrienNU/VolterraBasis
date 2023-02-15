@@ -49,6 +49,11 @@ for type in ["exp", "sech", "gaussian"]:
     params = vb.memory_fit(model.kernel["time_kernel"], kernel[:, 0, 0], type=type)
     print(params)
     axs.plot(model.kernel["time_kernel"], vb.memory_fit_eval(model.kernel["time_kernel"], params), "-x", label="Fit " + str(type))
+type = "prony"
+print("Fit: " + str(type))
+params = vb.memory_fit(model.kernel["time_kernel"], kernel[:, 0, 0], type=type, N_keep=100)
+print(params)
+axs.plot(model.kernel["time_kernel"], vb.memory_fit_eval(model.kernel["time_kernel"], params), "-x", label="Fit " + str(type))
 axs.legend(loc="best")
 
 plt.show()

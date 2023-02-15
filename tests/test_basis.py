@@ -94,3 +94,23 @@ def test_features_combiner():
     assert basis.basis(x_range).shape == (n_points, 8)
     assert basis.deriv(x_range).shape == (n_points, 7, 1)
     assert basis.hessian(x_range).shape == (n_points, 7, 1, 1)
+
+
+def test_fem_2d():
+    import os
+    import skfem
+
+    file_dir = os.path.dirname(os.path.realpath(__file__))
+    trj = np.loadtxt(os.path.join(file_dir, "../examples/example_lj.trj"))
+
+    vertices, tri = bf.centroid_driven_mesh(trj[:, 1:3], bins=25)
+
+    m = skfem.MeshTri(vertices.T, tri.T)
+    e = skfem.ElementTriP1()  # skfem.ElementTriRT0()  #
+    basis_fem = skfem.CellBasis(m, e)
+    pts = trj[:150, 1:3]
+    n_points = pts.shape[0]
+    basis = bf.FEMScalarFeatures(basis_fem)
+    basis.fit(pts)
+    assert basis.basis(pts).shape == (n_points, basis_fem.N)
+    assert basis.deriv(pts).shape == (n_points, basis_fem.N, 2)

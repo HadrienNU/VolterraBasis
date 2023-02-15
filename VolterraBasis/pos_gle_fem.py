@@ -10,7 +10,7 @@ from scipy.sparse import coo_matrix
 from .pos_gle_base import Pos_gle_base, _convert_input_array_for_evaluation
 
 
-class Pos_gle_fem_base(Pos_gle_base):
+class Pos_gle_fem_base(Pos_gle_base):  # pragma: no cover
     """
     Memory extraction using finite element basis.
     Finite element are implement using scikit-fem.
@@ -311,7 +311,7 @@ class Pos_gle_fem_base(Pos_gle_base):
         return self.time, output_kernel  # Return the kernel as array (time x nb of evalution point x dim_x x dim_x)
 
 
-class Pos_gle_fem(Pos_gle_fem_base):
+class Pos_gle_fem(Pos_gle_fem_base):  # pragma: no cover
     """
     The main class for the position dependent memory extraction,
     holding all data and the extracted memory kernels.
@@ -369,7 +369,7 @@ class Pos_gle_fem(Pos_gle_fem_base):
             raise ValueError("Basis evaluation goal not specified")
 
 
-class Pos_gle_fem_equilibrium(Pos_gle_fem_base):
+class Pos_gle_fem_equilibrium(Pos_gle_fem_base):  # pragma: no cover
     """
     Class for computation of equilibrium systems.
     """
@@ -433,61 +433,3 @@ class Pos_gle_fem_equilibrium(Pos_gle_fem_base):
         self.compute_pmf(self.basis)
         self.compute_effective_masse()
         self.force_coeff = self.mass @ self.potential_coeff
-
-
-class Pos_gle_fem_app_kernel(Pos_gle_fem_base):
-    """
-    A class with a different basis for the kernel and the force.
-    Can be used as an approximation of the real kernel when dimension of bases is too high
-    """
-
-    def __init__(self, xva_arg, basis: Basis, saveall=True, prefix="", verbose=True, trunc=1.0):
-        """
-        Create an instance of the Pos_gle class.
-
-        Parameters
-        ----------
-        xva_arg : xarray dataset (['time', 'x', 'v', 'a']) or list of datasets.
-            Use compute_va() or see its output for format details.
-            The timeseries to analyze. It should be either a xarray timeseries
-            or a listlike collection of them.
-        basis :  scikitfem Basis class
-            The finite element basis
-        saveall : bool, default=True
-            Whether to save all output functions.
-        prefix : str
-            Prefix for the saved output functions.
-        verbose : bool, default=True
-            Set verbosity.
-        trunc : float, default=1.0
-            Truncate all correlation functions and the memory kernel after this
-            time value.
-        """
-        Pos_gle_fem_base.__init__(self, xva_arg, basis, saveall, prefix, verbose, trunc)
-        self.N_basis_elt_force = self.N_basis_elt
-        self.N_basis_elt_kernel = self.N_basis_elt
-        self.rank_projection = True
-
-    def basis_vector(self, xva, elem, compute_for="corrs"):
-        """
-        From one trajectory compute the basis element.
-        """
-        nb_points = xva.dims["time"]
-        bk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x))  # Check dimension should we add self.dim_x?
-        dbk = np.zeros((nb_points, self.basis.Nbfun, self.dim_x, self.dim_x))  # Check dimension
-        dofs = np.zeros(self.basis.Nbfun, dtype=int)
-        loc_value_t = self.basis.mapping.invF(xva["x"].data.T.reshape(self.dim_x, 1, -1), tind=slice(elem, elem + 1))  # Reshape into dim * 1 element * nb of point
-        for i in range(self.basis.Nbfun):
-            phi_field = self.basis.elem.gbasis(self.basis.mapping, loc_value_t[:, 0, :], i, tind=slice(elem, elem + 1))
-            bk[:, i, :] = phi_field[0].value.T.reshape(-1, self.dim_x)  # The middle indice is the choice of element, ie only one choice here
-            dbk[:, i, :, :] = phi_field[0].grad.T.reshape(-1, self.dim_x, self.dim_x)  # dbk via div? # TODO CHECK the transpose
-            dofs[i] = self.basis.element_dofs[i, elem]
-        if compute_for == "force":
-            return bk, dofs
-        if compute_for == "kernel":  # For kernel evaluation
-            return dbk, dofs
-        elif compute_for == "corrs":
-            E = np.einsum("nlfd,nd->nlf", dbk, xva["v"].data)
-            return bk, E, None, dofs
-        else:
-            raise ValueError("Basis evaluation goal not specified")

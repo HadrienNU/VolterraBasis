@@ -25,7 +25,7 @@ def matmulPrange(P_range, E):
     Reduce basis size when needed
     """
     # P_range = xr.DataArray(P_mat, dims=["dim_basis", "dim_basis_old"])
-    return xr.dot(P_range, E.rename({"dim_basis": "dim_basis_old"}))
+    return xr.dot(E.rename({"dim_basis": "dim_basis_old"}), P_range)
 
 
 class ModelBase(object):
@@ -89,21 +89,6 @@ class ModelBase(object):
                 self.basis = self.basis.fit(describe_data)  # Fit basis with minimal information
             else:
                 raise Exception("Basis class do have fit() method or do not expose n_output_features_ attribute")
-
-        self.N_basis_elt = self.basis.n_output_features_
-
-    def setup_basis(self, describe_data):
-        """
-        We can also fit model from data
-        """
-        self.dim_x = describe_data.mean.shape[0]
-
-        if callable(getattr(self.basis, "fit", None)):
-            if describe_data is None:
-                describe_data = describe_from_dim(self.dim_x)
-            self.basis = self.basis.fit(describe_data)  # Fit basis with minimal information
-        else:
-            raise Exception("Basis class do have fit() method or do not expose n_output_features_ attribute")
 
         self.N_basis_elt = self.basis.n_output_features_
 
@@ -256,9 +241,11 @@ class ModelBase(object):
                 warnings.warn("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
         if self.eff_mass is None:
             warnings.warn("Effective mass has not been computed, use effetive mass of 1.0")
-            self.eff_mass = np.identity(self.dim_x)
+            eff_mass = np.identity(self.dim_x)
+        else:
+            eff_mass = np.asarray(self.eff_mass)
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="pmf")
-        pmf = -1 * xr.dot(E, coeffs, self.eff_mass).to_numpy() / kT
+        pmf = -1 * xr.dot(E, coeffs).values @ eff_mass / kT
         return pmf - float(set_zero) * np.min(pmf)
 
     def inv_mass_eval(self, x, coeffs=None, set_zero=True):
@@ -348,7 +335,7 @@ class ModelBase(object):
             kernel = np.asarray(kernel)
         if trunc_ind is not None:
             kernel = kernel[:trunc_ind, :, :]
-        force_term = np.matmul(corrs_force, force_coeff)
+        force_term = np.matmul(force_coeff, corrs_force)
         res_int = np.zeros((corrs_kernel.shape[-1], corrs_kernel.shape[1], kernel.shape[-1]))
         for n in range(1, corrs_kernel.shape[-1]):
             max_len = min(n, kernel.shape[0])
@@ -531,6 +518,30 @@ class Pos_gle_with_friction(Pos_gle):
         E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="kernel")
         return np.einsum("ikd,kl->ild", E, self.force_coeff[self.N_basis_elt :])  # np.matmul(self.force_coeff[self.N_basis_elt :, :], E.T)
 
+    def pmf_eval(self, x, coeffs=None, kT=1.0, set_zero=True):
+        """
+        Compute free energy via integration of the mean force at points x.
+        This assume that the effective mass is independent of the position.
+        If coeffs is given, use provided coefficients instead of the force coefficients.
+        """
+        if self.dim_obs > 1:
+            print("Warning: Computation of the free energy for dimensions higher than 1 is likely to be incorrect.")
+        if coeffs is None:
+            if self.force_coeff is None:
+                raise Exception("Mean force has not been computed.")
+            coeffs = self.force_coeff[self.N_basis_elt :]
+        else:  # Check shape
+            if coeffs.shape != (self.N_basis_elt, self.dim_obs):
+                warnings.warn("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
+        if self.eff_mass is None:
+            warnings.warn("Effective mass has not been computed, use effetive mass of 1.0")
+            eff_mass = np.identity(self.dim_x)
+        else:
+            eff_mass = np.asarray(self.eff_mass)
+        E = self.basis_vector(_convert_input_array_for_evaluation(x, self.dim_x), compute_for="pmf")
+        pmf = -1 * xr.dot(E, coeffs).values @ eff_mass / kT
+        return pmf - float(set_zero) * np.min(pmf)
+
 
 class Pos_gle_no_vel_basis(Pos_gle):
     """
@@ -591,29 +602,6 @@ class Pos_gle_const_kernel(Pos_gle):
             return bk, xva["v"].rename({"dim_x": "dim_basis"}), xva["a"].rename({"dim_x": "dim_basis"})
         else:
             raise ValueError("Basis evaluation goal not specified")
-
-    def compute_linear_part_force(self):
-        """
-        Computes the mean force from the trajectories.
-        """
-        if self.verbose:
-            print("Calculate linear part of the force...")
-        avg_disp = np.zeros((1, self.dim_obs))
-        avg_gram = np.zeros((1, 1))
-        for weight, xva in zip(self.weights, self.xva_list):
-            E = xva["x"].data
-            avg_disp += np.matmul(E.T, self.force_eval(xva)) / self.weightsum
-            avg_gram += np.matmul(E.T, E) / self.weightsum
-        print(avg_gram)
-        self.linear_force_part = avg_disp / avg_gram
-        return self.linear_force_part
-
-    def eval_non_linear_force(self, x, coeffs=None):
-        """
-        Evaluate the force at given points x.
-        If coeffs is given, use provided coefficients instead of the force
-        """
-        return self.force_eval(x, coeffs)  # - self.linear_force_part * x["x"].data  # Return the force as array (nb of evalution point x dim_obs)
 
 
 class Pos_gle_hybrid(Pos_gle):
