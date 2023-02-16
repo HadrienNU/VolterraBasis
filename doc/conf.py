@@ -52,7 +52,7 @@ version = __version__
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ["sphinx.ext.autosummary", "sphinx.ext.doctest", "sphinx.ext.intersphinx", "sphinx.ext.todo", "sphinx.ext.viewcode", "sphinx.ext.coverage", "numpydoc", "sphinx_gallery.gen_gallery"]
+extensions = ["sphinx.ext.autodoc", "sphinx.ext.autosummary", "sphinx.ext.doctest", "sphinx.ext.intersphinx", "sphinx.ext.todo", "sphinx.ext.viewcode", "sphinx.ext.coverage", "numpydoc", "sphinx_gallery.gen_gallery"]
 # "autoapi.extension",
 # this is needed for some reason...
 # see https://github.com/numpy/numpydoc/issues/69
@@ -68,7 +68,7 @@ else:
     extensions.append("sphinx.ext.imgmath")
 
 autoclass_content = "both"
-# autodoc_default_flags = {"members": True, "inherited-members": True}
+autodoc_default_flags = {"members": True, "inherited-members": True}
 # autoapi_dirs = ["../VolterraBasis"]
 
 # Add any paths that contain templates here, relative to this directory.
