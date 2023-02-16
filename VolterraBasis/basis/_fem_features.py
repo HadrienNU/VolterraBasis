@@ -6,10 +6,6 @@ import numpy as np
 from sklearn.base import TransformerMixin
 from scipy.spatial import cKDTree
 
-from skfem.assembly.basis import Basis
-from skfem import LinearForm, BilinearForm
-from skfem.helpers import dot
-from itertools import product
 import sparse
 
 
@@ -79,12 +75,15 @@ class FEMScalarFeatures(TransformerMixin):
     Finite elements features for scalar basis
     """
 
-    def __init__(self, basis: Basis):
+    def __init__(self, basis):
         # En vrai comme ça ne marche que pour les élements H1 je devrais juste construire la base localement à partir du mesh et de l'élément en vérifiant qu'il dérive bien de H1
         # Mais ça peut marcher aussi pour les éléments globaux, bref on a le droit qu'aux éléments scalaires pour l'instant
         """
+        Wrapper to finite element basis from scikit-fem
         Parameters
         ----------
+        basis: skfem basis
+            A finite element basis. Should be a scalar basis (H1 or global element)
         """
         self.basis_fem = basis
         self.const_removed = False
@@ -114,11 +113,7 @@ class FEMScalarFeatures(TransformerMixin):
         # cells = self.basis_fem.mesh.element_finder(mapping=self.basis_fem.mapping)(*x)
         pts = self.basis_fem.mapping.invF(x[:, :, np.newaxis], tind=cells)
         phis = np.array([self.basis_fem.elem.gbasis(self.basis_fem.mapping, pts, k, tind=cells)[0] for k in range(self.basis_fem.Nbfun)])  # TODO: vérifier la shape
-        return sparse.COO(
-            (np.tile(np.arange(nsamples), self.basis_fem.Nbfun), self.basis_fem.element_dofs[:, cells].flatten()),
-            np.ravel(phis),
-            shape=(nsamples, self.n_output_features_),
-        )
+        return sparse.COO((np.tile(np.arange(nsamples), self.basis_fem.Nbfun), self.basis_fem.element_dofs[:, cells].flatten()), np.ravel(phis), shape=(nsamples, self.n_output_features_))
 
     def deriv(self, X, deriv_order=1):
         nsamples, dim = X.shape
@@ -128,9 +123,7 @@ class FEMScalarFeatures(TransformerMixin):
         pts = self.basis_fem.mapping.invF(x[:, :, np.newaxis], tind=cells)
         phis = np.array([self.basis_fem.elem.gbasis(self.basis_fem.mapping, pts, k, tind=cells)[0].grad.transpose([1, 2, 0]) for k in range(self.basis_fem.Nbfun)])  # TODO: vérifier la shape et en extraire les diverses dimensions
         return sparse.COO(
-            (np.tile(np.arange(nsamples), dim * self.basis_fem.Nbfun), np.tile(self.basis_fem.element_dofs[:, cells].flatten(), dim), np.repeat(np.arange(dim), nsamples * self.basis_fem.Nbfun)),  # Le dernier array doit être 000011111222
-            np.ravel(phis),
-            shape=(nsamples, self.n_output_features_, dim),
+            (np.tile(np.arange(nsamples), dim * self.basis_fem.Nbfun), np.tile(self.basis_fem.element_dofs[:, cells].flatten(), dim), np.repeat(np.arange(dim), nsamples * self.basis_fem.Nbfun)), np.ravel(phis), shape=(nsamples, self.n_output_features_, dim)  # Le dernier array doit être 000011111222
         )
 
     def hessian(self, X):  # Only for Elementglobal
