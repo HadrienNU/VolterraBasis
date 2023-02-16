@@ -20,8 +20,7 @@ def solve_linear(G, b):  # Write also a sparse version
 
 class Estimator_gle(object):
     """
-    The main class for the position dependent memory extraction,
-    holding all data and the extracted memory kernels.
+    The main class for the position dependent memory extraction holding all data.
     """
 
     def __init__(self, xva_arg, model_class, basis, trunc=1.0, L_obs=None, saveall=True, prefix="", verbose=True, n_jobs=1, **kwargs):
@@ -285,10 +284,7 @@ class Estimator_gle(object):
             if isinstance(self.dotbkbkcorrw, xr.DataArray):
                 self.dotbkbkcorrw = xr.dot(P_range_tranpose, P_range, self.dotbkbkcorrw.rename({"dim_basis": "dim_basis_old", "dim_basis'": "dim_basis_old'"}))
         if self.saveall:
-            xr.Dataset(
-                {"bkbk": self.bkbkcorrw, "bkdx": self.bkdxcorrw, "dotbkbk": self.dotbkbkcorrw, "dotbkdx": self.dotbkdxcorrw},
-                coords={"time_trunc": np.arange(self.bkbkcorrw.shape[-1]) * self.dt},
-            ).to_netcdf(self.corrsfile)
+            xr.Dataset({"bkbk": self.bkbkcorrw, "bkdx": self.bkdxcorrw, "dotbkbk": self.dotbkbkcorrw, "dotbkdx": self.dotbkdxcorrw}, coords={"time_trunc": np.arange(self.bkbkcorrw.shape[-1]) * self.dt}).to_netcdf(self.corrsfile)
         return self.model
 
     def compute_kernel(self, method="rectangular", k0=None):
@@ -355,6 +351,7 @@ class Estimator_gle(object):
         For checking if the volterra equation is correctly inversed
         Compute the integral in volterra equation using trapezoidal rule.
         This only check the volterra of the first kind
+
         Parameters
         ----------
         return_diff : bool, default = False
@@ -449,11 +446,46 @@ class Estimator_gle(object):
         # print(E_force, model.force_coeff)
         ortho_xva = xva[model.L_obs] - xr.dot(E_force, model.force_coeff)
         # print(ortho_xva.head(), E.head())
-        bkdxcorrw = xr.apply_ufunc(func, E, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, dask_gufunc_kwargs={"output_sizes": {"time_trunc": model.trunc_ind}, "allow_rechunk": True}, vectorize=vectorize, dask="parallelized")
-        bkbkcorrw = xr.apply_ufunc(func, E.rename({"dim_basis": "dim_basis'"}), E, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, dask_gufunc_kwargs={"output_sizes": {"time_trunc": model.trunc_ind}, "allow_rechunk": True}, vectorize=vectorize, dask="parallelized")
+        bkdxcorrw = xr.apply_ufunc(
+            func, E, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, dask_gufunc_kwargs={"output_sizes": {"time_trunc": model.trunc_ind}, "allow_rechunk": True}, vectorize=vectorize, dask="parallelized"
+        )
+        bkbkcorrw = xr.apply_ufunc(
+            func,
+            E.rename({"dim_basis": "dim_basis'"}),
+            E,
+            input_core_dims=[["time"], ["time"]],
+            output_core_dims=[["time_trunc"]],
+            exclude_dims={"time"},
+            kwargs={"trunc": model.trunc_ind},
+            dask_gufunc_kwargs={"output_sizes": {"time_trunc": model.trunc_ind}, "allow_rechunk": True},
+            vectorize=vectorize,
+            dask="parallelized",
+        )
         if second_order_method:
-            dotbkdxcorrw = xr.apply_ufunc(func, dE, ortho_xva, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, dask_gufunc_kwargs={"output_sizes": {"time_trunc": model.trunc_ind}, "allow_rechunk": True}, vectorize=vectorize, dask="parallelized")
-            dotbkbkcorrw = xr.apply_ufunc(func, dE.rename({"dim_basis": "dim_basis'"}), E, input_core_dims=[["time"], ["time"]], output_core_dims=[["time_trunc"]], exclude_dims={"time"}, kwargs={"trunc": model.trunc_ind}, dask_gufunc_kwargs={"output_sizes": {"time_trunc": model.trunc_ind}, "allow_rechunk": True}, vectorize=vectorize, dask="parallelized")
+            dotbkdxcorrw = xr.apply_ufunc(
+                func,
+                dE,
+                ortho_xva,
+                input_core_dims=[["time"], ["time"]],
+                output_core_dims=[["time_trunc"]],
+                exclude_dims={"time"},
+                kwargs={"trunc": model.trunc_ind},
+                dask_gufunc_kwargs={"output_sizes": {"time_trunc": model.trunc_ind}, "allow_rechunk": True},
+                vectorize=vectorize,
+                dask="parallelized",
+            )
+            dotbkbkcorrw = xr.apply_ufunc(
+                func,
+                dE.rename({"dim_basis": "dim_basis'"}),
+                E,
+                input_core_dims=[["time"], ["time"]],
+                output_core_dims=[["time_trunc"]],
+                exclude_dims={"time"},
+                kwargs={"trunc": model.trunc_ind},
+                dask_gufunc_kwargs={"output_sizes": {"time_trunc": model.trunc_ind}, "allow_rechunk": True},
+                vectorize=vectorize,
+                dask="parallelized",
+            )
         else:
             # We can compute only the first element then, that is faster
             dotbkdxcorrw = xr.dot(dE, ortho_xva).expand_dims({"time_trunc": 1}) / weight

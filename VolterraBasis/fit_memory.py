@@ -122,16 +122,16 @@ def memory_fit_kernel(times, kernel, type="exp", **kwargs):
     Fit memory kernel using  type function. This fit one series per components of the memory kernel.
     Parameters
     ----------
-        times: numpy array
-            The time component of the data
-        kernel: numpy array
-            The kernel to be fitted
-        thres: float, default=None
-            A threshold that determined the numerical zero in the filetring of the data.
-            If None, it is set to the value of precision of the float on the machine
-        N_keep: int, default=None
-            Maximum number of terms in the series to keep.
-            If None, it is determined from the threshold.
+    times: numpy array
+        The time component of the data
+    kernel: numpy array
+        The kernel to be fitted
+    thres: float, default=None
+        A threshold that determined the numerical zero in the filetring of the data.
+        If None, it is set to the value of precision of the float on the machine
+    N_keep: int, default=None
+        Maximum number of terms in the series to keep.
+        If None, it is determined from the threshold.
 
     Note: Smaller N_keep or higher threshold result in faster analysis. Result can also depend strongly of the value of either thres or N_keep
     """
@@ -149,12 +149,12 @@ def memory_kernel_eval(times, params, type=None):
     You can then use pos_gle.kernel_eval(x, prony_eval) to get kernel at those points
     Parameters
     ----------
-        times: numpy array
-            Points at which evaluate the series
-        params:
-            The result of fit_kernel
-        type: str
-            The type of function to use
+    times: numpy array
+        Points at which evaluate the series
+    params:
+        The result of fit_kernel
+    type: str
+        The type of function to use
     """
     if type is None:
         type, popt = params

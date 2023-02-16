@@ -149,20 +149,20 @@ def prony_fit_times_serie(data, dt, thres=None, N_keep=None, remove=True):
     Fit one time series.
     Parameters
     ----------
-        times: numpy array
-            The time component of the data
-        kernel: numpy array
-            The kernel to be fitted
-        thres: float, default=None
-            A threshold that determined the numerical zero in the filetring of the data.
-            If None, it is set to the value of precision of the float on the machine.
-        N_keep: int, default=None
-            Maximum number of terms in the series to keep.
-            If None, it is determined from the threshold.
-        remove: bool, default=True
-            If true, remove diverging exponentials.
-        debug: bool, default=False
-            A flag indicating to output as well the filtered data.
+    times: numpy array
+        The time component of the data
+    kernel: numpy array
+        The kernel to be fitted
+    thres: float, default=None
+        A threshold that determined the numerical zero in the filetring of the data.
+        If None, it is set to the value of precision of the float on the machine.
+    N_keep: int, default=None
+        Maximum number of terms in the series to keep.
+        If None, it is determined from the threshold.
+    remove: bool, default=True
+        If true, remove diverging exponentials.
+    debug: bool, default=False
+        A flag indicating to output as well the filtered data.
     """
     J, _ = get_jacobi_matrix_reduced(data / data[0], thres=thres, N_keep=N_keep)
     A = clean_eigenvalues(J, dt, remove=remove)
@@ -175,12 +175,12 @@ def prony_series_eval(times, y0, A):
     You can then use pos_gle.kernel_eval(x, prony_eval) to get kernel at those points
     Parameters
     ----------
-        times: numpy array
-            Points at which evaluate the series
-        y0: float
-            Initial value of the data
-        A :
-            Result of the prony fitting.
+    times: numpy array
+        Points at which evaluate the series
+    y0: float
+        Initial value of the data
+    A :
+        Result of the prony fitting.
     """
     times = np.asarray(times).squeeze()
     nb_times = times.shape[0]
@@ -195,16 +195,16 @@ def prony_fit_kernel(times, kernel, thres=None, N_keep=None):
     Fit memory kernel using prony series. This fit one series per components of the memory kernel.
     Parameters
     ----------
-        times: numpy array
-            The time component of the data
-        kernel: numpy array
-            The kernel to be fitted
-        thres: float, default=None
-            A threshold that determined the numerical zero in the filetring of the data.
-            If None, it is set to the value of precision of the float on the machine
-        N_keep: int, default=None
-            Maximum number of terms in the series to keep.
-            If None, it is determined from the threshold.
+    times: numpy array
+        The time component of the data
+    kernel: numpy array
+        The kernel to be fitted
+    thres: float, default=None
+        A threshold that determined the numerical zero in the filetring of the data.
+        If None, it is set to the value of precision of the float on the machine
+    N_keep: int, default=None
+        Maximum number of terms in the series to keep.
+        If None, it is determined from the threshold.
 
     Note: Smaller N_keep or higher threshold result in faster analysis. Result can also depend strongly of the value of either thres or N_keep
     """
@@ -224,10 +224,10 @@ def prony_series_kernel_eval(times, list_A):
     You can then use pos_gle.kernel_eval(x, prony_eval) to get kernel at those points
     Parameters
     ----------
-        times: numpy array
-            Points at which evaluate the series
-        list_A:
-            The result of fit_kernel
+    times: numpy array
+        Points at which evaluate the series
+    list_A:
+        The result of fit_kernel
     """
     times = np.asarray(times).squeeze()
     nb_times = times.shape[0]

@@ -5,9 +5,7 @@ dependencies:
   - numpy
   - scipy
   - xarray
-  - dask
   - scikit-learn
-  - sckit-fem
   - libgfortran-ng
   - sphinx-gallery
   - numpydoc

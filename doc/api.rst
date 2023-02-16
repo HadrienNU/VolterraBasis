@@ -16,9 +16,13 @@ Loading trajectories
    compute_va
 
    compute_a
+   
+   concat_underdamped
+   
+   compute_1d_fe
 
- Memory kernel estimation
- =========================
+Memory kernel estimation
+=========================
 
  .. autosummary::
     :toctree: generated/
@@ -26,7 +30,7 @@ Loading trajectories
 
     Estimator_gle
 
- Available models of GLE
+Available models of GLE
 =========================
 
 .. autosummary::

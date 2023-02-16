@@ -1,5 +1,4 @@
 import numpy as np
-import dask.array as da
 import xarray as xr
 import scipy.interpolate
 from ._version import __version__
@@ -38,8 +37,9 @@ def xframe(x, time, v=None, a=None, fix_time=False, round_time=1.0e-4, dt=-1):
 
     Parameters
     ----------
-    x : numpy array
-        The time series.
+    x : array
+        The time series. The array can be in any type as long as xarray can handle it.
+        This include numpy array, dask array,...
     time : numpy array
         The respective time values.
     fix_time : bool, default=False
@@ -54,7 +54,8 @@ def xframe(x, time, v=None, a=None, fix_time=False, round_time=1.0e-4, dt=-1):
     a : numpy array, default=None
         Acceleration if computed externally
     """
-    if not (isinstance(x, np.ndarray) or isinstance(x, da.Array)):
+    # Quick check for duck numpy-like array
+    if "shape" not in x.__dir__() or "__array__" not in x.__dir__():
         x = np.asarray(x)
     if x.ndim == 1:
         x = x.reshape(-1, 1)

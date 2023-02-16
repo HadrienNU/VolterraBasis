@@ -5,7 +5,6 @@ import numpy as np
 import scipy.interpolate
 import scipy.stats
 from sklearn.base import TransformerMixin
-from scipy.spatial import cKDTree
 
 from ._data_describe import quick_describe, minimal_describe
 
@@ -26,19 +25,19 @@ def _get_bspline_basis(knots, degree=3, periodic=False):
 
 class BSplineFeatures(TransformerMixin):  # TODO replace current implementation by one using Bspline.basis_element
     """
-    B splines features
+    Bsplines features class
     """
 
     def __init__(self, n_knots=5, k=3, periodic=False, remove_const=True):
         """
         Parameters
         ----------
-            n_knots : int
-                Number of knots to use
-            k : int
-                Degree of the splines
-            periodic: bool
-                Whatever to use periodic splines or not
+        n_knots : int
+            Number of knots to use
+        k : int
+            Degree of the splines
+        periodic: bool
+            Whatever to use periodic splines or not
         """
         self.periodic = periodic
         self.k = k
@@ -138,19 +137,20 @@ def tricube(u, der=0):
 class SmoothIndicatorFeatures(TransformerMixin):
     """
     Indicator function with smooth boundary
+
     """
 
     def __init__(self, states_boundary, boundary_type="tricube", periodic=False):
         """
         Parameters
         ----------
-            states_boundary : list
-                Number of knots to use
-            boundary_type : str or callable
-                Function to use for the interpolation between zeros and one value
-                If this is a callabe function, first argument is between 0-> 1 and 1 -> 0 and second one is the order of the derivative
-            periodic: bool
-                Whatever to use periodic indicator function. If yes, the last indicator will sbe the same function than the first one
+        states_boundary : list
+            Number of knots to use
+        boundary_type : str or callable
+            Function to use for the interpolation between zeros and one value
+            If this is a callabe function, first argument is between 0-> 1 and 1 -> 0 and second one is the order of the derivative
+        periodic: bool
+            Whatever to use periodic indicator function. If yes, the last indicator will sbe the same function than the first one
         """
         self.periodic = periodic
         self.states_boundary = states_boundary

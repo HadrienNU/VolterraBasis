@@ -1,6 +1,5 @@
 from collections import namedtuple
 import numpy as np
-import json
 
 DescribeResult = namedtuple("DescribeResult", ("nobs", "minmax", "mean", "variance", "skewness", "kurtosis"))
 

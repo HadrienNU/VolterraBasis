@@ -8,11 +8,32 @@ Welcome to VolterraBasis's documentation!
 
 This project compute position-dependent memory kernel for Generalized Langevin Equations. Please refer to  Position-dependent memory kernel in generalized Langevin equations: Theory and numerical estimation, J. Chem. Phys. 156, 244105 (2022); https://doi.org/10.1063/5.0094566, also available at https://arxiv.org/abs/2201.02457 for a detailed description of the algorithm.
 
+
+.. toctree::
+   :maxdepth: 2
+   :hidden:
+   :caption: Documentation
+
+   self
+   quick_start
+   api
+
+
+.. toctree::
+   :maxdepth: 2
+   :hidden:
+   :caption: Tutorial - Examples
+
+   auto_examples/index
+
+
+
 Installation
 ------------------
 
 Run
     >>> pip install git+https://github.com/HadrienNU/VolterraBasis.git
+    
 to install.
 
 Getting Started
