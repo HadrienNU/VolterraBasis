@@ -16,9 +16,9 @@ Loading trajectories
    compute_va
 
    compute_a
-   
+
    concat_underdamped
-   
+
    compute_1d_fe
 
 Memory kernel estimation

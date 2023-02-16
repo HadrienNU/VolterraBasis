@@ -21,9 +21,12 @@ import sphinx_rtd_theme
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-sys.path.insert(0, os.path.abspath("."))
-sys.path.insert(0, os.path.abspath(".."))
+sys.path.insert(0, os.path.abspath("../../../.."))
+sys.path.insert(0, os.path.abspath("../../.."))
 sys.path.insert(0, os.path.abspath("../.."))
+sys.path.insert(0, os.path.abspath(".."))
+sys.path.insert(0, os.path.abspath("."))
+
 
 # -- Project information -----------------------------------------------------
 
@@ -81,7 +84,7 @@ source_suffix = ".rst"
 # source_encoding = 'utf-8-sig'
 
 # Generate the plots for the gallery
-plot_gallery = "True"
+plot_gallery = True
 
 # The master toctree document.
 master_doc = "index"
