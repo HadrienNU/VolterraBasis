@@ -21,14 +21,6 @@ Loading trajectories
 
    compute_1d_fe
 
-Memory kernel estimation
-=========================
-
- .. autosummary::
-    :toctree: generated/
-    :template: class.rst
-
-    Estimator_gle
 
 Available models of GLE
 =========================
