@@ -11,3 +11,4 @@ dependencies:
   - libgfortran-ng
   - sphinx-gallery
   - numpydoc
+  - joblib
