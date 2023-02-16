@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-===========================
-Memory Kernel Estimation
-===========================
+===============================================
+Memory Kernel Estimation with the usual GLE
+===============================================
 
 How to run memory kernel estimation
 """

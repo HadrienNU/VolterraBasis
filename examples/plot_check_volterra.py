@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-===========================
-Memory Kernel Estimation
-===========================
+==========================================
+Checking solution of volterra equation
+==========================================
 
 How to run memory kernel estimation
 """

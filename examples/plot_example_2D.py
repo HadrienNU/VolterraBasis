@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-===========================
-Kernel Estimation
-===========================
+=====================================
+Kernel Estimation for 2D observable
+=====================================
 
 How to run kernel estimation
 """

@@ -3,7 +3,7 @@
 
 """
 ===========================
-Memory Kernel Integration
+GLE Integration
 ===========================
 
 How to run integration of the GLE once estimated.

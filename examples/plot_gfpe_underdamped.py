@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-===========================
-Kernel Estimation
-===========================
+=======================================================
+Generalized Fokker Planck equation in underdamped case
+=======================================================
 
 How to run kernel estimation
 """

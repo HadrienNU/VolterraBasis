@@ -3,10 +3,10 @@
 
 """
 ===========================
-Prony Series Estimation
+Memory Kernel fit
 ===========================
 
-Memory kernel fitted by a prony series
+Memory kernel fitted by various functionnal forms
 """
 
 import numpy as np
