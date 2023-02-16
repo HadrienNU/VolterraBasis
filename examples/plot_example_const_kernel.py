@@ -39,7 +39,7 @@ xfa = (bins[1:] + bins[:-1]) / 2.0
 force = model.force_eval(xfa)
 
 
-time_corrs, noise_corr = estimator.compute_corrs_w_noise()
+time_corrs, noise_corr = estimator.compute_projected_corrs()
 
 vel_var = estimator.compute_effective_mass().eff_mass.values[0, 0]
 # Compute noise

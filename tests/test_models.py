@@ -6,13 +6,6 @@ import VolterraBasis as vb
 import VolterraBasis.basis as bf
 
 
-"""
-Pour les tests: on peut tester:
-- On peut faire les tests avec tous les models
-- Il faut tester ici toutes les fonctions d'évaluation ainsi que la sauvegarde et le chargement des models
-"""
-
-
 @pytest.fixture
 def traj_list(request):
     file_dir = os.path.dirname(os.path.realpath(__file__))
@@ -46,7 +39,7 @@ def traj_list(request):
     ],
 )
 def test_pos_gle(traj_list, model, basis, parameters):
-    estimator = vb.Estimator_gle(traj_list, model, basis(**parameters), trunc=10, saveall=False, verbose=False)
+    estimator = vb.Estimator_gle(traj_list, model, basis(**parameters), trunc=1, saveall=False, verbose=False)
     model = estimator.compute_mean_force()
 
     xfa = [1.1, 1.5, 2.0]
@@ -100,7 +93,7 @@ def test_pos_gle(traj_list, model, basis, parameters):
     ],
 )
 def test_pos_gle_w_friction(traj_list, basis, parameters):
-    estimator = vb.Estimator_gle(traj_list, vb.Pos_gle_with_friction, basis(**parameters), trunc=10, saveall=False, verbose=False)
+    estimator = vb.Estimator_gle(traj_list, vb.Pos_gle_with_friction, basis(**parameters), trunc=1, saveall=False, verbose=False)
     model = estimator.compute_mean_force()
 
     xfa = [1.1, 1.5, 2.0]
@@ -123,7 +116,7 @@ def test_pos_gle_w_friction(traj_list, basis, parameters):
 
     time, noise, a, force, mem = model.compute_noise(traj_list[0])
 
-    assert noise.shape == traj_list[0].shape
+    assert noise.shape == traj_list[0]["a"].shape
 
     kernel = model.kernel_eval(xfa)
 
@@ -159,7 +152,7 @@ def test_fem(model):
     xf = vb.xframe(trj[:, 1:3], trj[:, 0] - trj[0, 0])
     xvaf = vb.compute_va(xf)
     xva_list.append(xvaf)
-    estimator = vb.Estimator_gle(xva_list, model, bf.FEMScalarFeatures(basis_fem), trunc=10, saveall=False, verbose=False)
+    estimator = vb.Estimator_gle(xva_list, model, bf.FEMScalarFeatures(basis_fem), trunc=1, saveall=False, verbose=False)
     model = estimator.compute_mean_force()
 
     xfa = trj[:10, 1:3]

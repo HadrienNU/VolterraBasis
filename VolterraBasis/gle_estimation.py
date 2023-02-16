@@ -97,6 +97,12 @@ class Estimator_gle(object):
 
         self._do_check_obs(model_class.set_of_obs, self.model.L_obs)  # Check that we have in the trajectories what we need
 
+        # For retrocompatibility, expose model methods for coefficients evaluation
+        for func in dir(self.model):
+            if callable(getattr(self.model, func)) and not func.startswith("_"):
+                if "eval" in func or "compute" in func or "func" in ["basis_vector"]:
+                    setattr(self, func, getattr(self.model, func))
+
     def _do_check(self, xva_arg):
         if xva_arg is not None:
             if isinstance(xva_arg, xr.Dataset):
@@ -239,11 +245,12 @@ class Estimator_gle(object):
         if self.verbose:
             print("Calculate mean force...")
         avg_disp, avg_gram = self.loop_over_trajs(self._projection_on_basis, self.model)
-        # print(avg_gram)
         self.model.gram_force = avg_gram
         self.model.force_coeff = solve_linear(avg_gram, avg_disp)
-        print(self.model.force_coeff)
         return self.model
+
+    def set_zero_force(self):
+        self.model.force_coeff = xr.DataArray(np.zeros((self.model.N_basis_elt_force, self.model.dim_obs)), dims=["dim_basis", self.xva_list[0][self.model.L_obs].dims[1]])
 
     def compute_corrs(self, large=False, rank_tol=None, **kwargs):
         """
@@ -343,33 +350,32 @@ class Estimator_gle(object):
             xr.Dataset({"kernel": self.model.kernel}).to_netcdf(self.kernelfile)
         return self.model
 
-    def check_volterra_inversion(self):
+    def check_volterra_inversion(self, return_diff=False):
         """
         For checking if the volterra equation is correctly inversed
-        Compute the integral in volterra equation using trapezoidal rule
+        Compute the integral in volterra equation using trapezoidal rule.
+        This only check the volterra of the first kind
+        Parameters
+        ----------
+        return_diff : bool, default = False
+            Indicate if you want the result of the intégral or the difference between the result and the expected value
         """
         if self.model.kernel is None:
             raise Exception("Kernel has not been computed.")
         dt = self.dt
-        time = np.arange(self.bkdxcorrw.shape[0]) * dt
         res_int = np.zeros(self.bkdxcorrw.shape)
-        # res_int[0, :] = 0.5 * dt * to_integrate[0, :]
-        # if method == "trapz":
         for n in range(self.model.kernel.shape[0]):
-            # print(self.bkbkcorrw[:, :, : n + 1][:, :, ::-1].shape, self.model.kernel[: n + 1, :, :].shape)
             to_integrate = np.einsum("jki,ikl->ijl", self.bkbkcorrw[:, :, : n + 1][:, :, ::-1], self.model.kernel[: n + 1, :, :])
-            # print(res_int.shape, to_integrate.shape, self.model.kernel.shape)
             res_int[:, :, n] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
-            # res_int[:, :, n] = -1 * simpson(to_integrate, dx=dt, axis=0, even="last")  # res_int[n - 1, :] + 0.5 * dt * (to_integrate[n - 1, :] + to_integrate[n, :])
-        # else:
-        #     for n in range(self.model.trunc_ind):
-        #         to_integrate = np.einsum("ijk,ik->ij", self.dotbkbkcorrw[: n + 1, :, :][::-1, :, :], self.kernel[: n + 1, :])
-        #         res_int[n, :] = -1 * trapezoid(to_integrate, dx=dt, axis=0)
-        #     # res_int[n, :] = -1 * simpson(to_integrate, dx=dt, axis=0, even="last")
-        #     res_int += np.einsum("jk,ik->ij", self.bkbkcorrw[0, :, :], self.kernel)
-        return time, res_int
+        if return_diff:
+            return np.abs(res_int - self.bkdxcorrw)
+        else:
+            return res_int
 
-    def compute_corrs_w_noise(self, left_op=None):
+    def compute_projected_corrs(self, left_op=None):
+        """
+        Compute correlation between noise and left_op using the projected correlations
+        """
         return self.loop_over_trajs(self._corrs_w_noise, self.model, left_op=left_op)
 
     @staticmethod

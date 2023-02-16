@@ -31,38 +31,16 @@ print("Dimension of observable", estimator.model.dim_x, estimator.model.rank_pro
 estimator.compute_mean_force()
 estimator.compute_corrs()
 model = estimator.compute_kernel(method="trapz")
-kernel = model.kernel_eval([1.5, 2.0, 2.5])
-print(kernel)
-# To find a correct parametrization of the space
-bins = np.histogram_bin_edges(xvaf["x"], bins=15)
-xfa = (bins[1:] + bins[:-1]) / 2.0
-force = model.force_eval(xfa)
 
+res_diff = estimator.check_volterra_inversion(return_diff=False)
 
-# Compute noise
-time_noise, noise_reconstructed, _, _, _ = model.compute_noise(xva_list[0], trunc_kernel=200)
-
-
-fig_kernel, axs = plt.subplots(1, 3)
-# Force plot
-axs[0].set_title("Force")
-axs[0].set_xlabel("$x$")
-axs[0].set_ylabel("$-dU(x)/dx$")
-axs[0].grid()
-axs[0].plot(xfa, force)
+fig_kernel, axs = plt.subplots(1, 1)
 # Kernel plot
-axs[1].set_title("Memory kernel")
-axs[1].set_xscale("log")
-axs[1].grid()
-kernel.squeeze().plot.line("-x", x="time_kernel", ax=axs[1])
-# axs[1].plot(time, kernel[:, :, 0, 0], "-x")
-axs[1].set_xlabel("$t$")
-axs[1].set_ylabel("$\\Gamma$")
+axs.set_title("Correlation diff")
+axs.set_xscale("log")
+axs.grid()
+estimator.bkdxcorrw.sel(dim_basis=0).squeeze().plot.line("-", x="time_trunc", ax=axs)
+axs.plot(np.arange(res_diff.shape[-1]), res_diff[0, 0, :].T, "x")
+axs.set_xlabel("$t$")
 
-# Noise plot
-axs[2].set_title("Noise")
-axs[2].set_xlabel("$t$")
-axs[2].set_ylabel("$\\xi_t$")
-axs[2].grid()
-axs[2].plot(time_noise, noise_reconstructed, "-")
 plt.show()

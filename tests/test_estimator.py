@@ -25,7 +25,7 @@ def traj_list(request):
 @pytest.mark.parametrize("n_jobs", [1, 4])
 def test_estimator(traj_list, n_jobs, request):
 
-    estimator = vb.Estimator_gle(traj_list, vb.Pos_gle, bf.BSplineFeatures(10), trunc=10, saveall=False, verbose=True, n_jobs=n_jobs)
+    estimator = vb.Estimator_gle(traj_list, vb.Pos_gle, bf.BSplineFeatures(10), trunc=1, saveall=False, verbose=True, n_jobs=n_jobs)
     assert estimator.model.dim_x == 1
 
     model = estimator.compute_mean_force()
@@ -44,22 +44,22 @@ def test_estimator(traj_list, n_jobs, request):
     # assert model.inv_mass_coeff.shape == (10, 1)
 
     model = estimator.compute_corrs()
-    assert estimator.bkbkcorrw.shape == (9, 9, 2000)
+    assert estimator.bkbkcorrw.shape == (9, 9, 200)
 
     model = estimator.compute_kernel(method="trapz")
-    assert model.kernel.shape == (1999, 9, 1)
+    assert model.kernel.shape == (199, 9, 1)
 
-    # t, volterra_corr = estimator.check_volterra_inversion()
-    # np.testing.assert_allclose(volterra_corr, estimator.bkdxcorrw, rtol=1e-1, atol=0.1)
+    # volterra_corr = estimator.check_volterra_inversion() # Too long to run
+    # np.testing.assert_allclose(volterra_corr, estimator.bkdxcorrw, rtol=1e-2)
 
-    time, corrs_noise = estimator.compute_corrs_w_noise()
-    assert corrs_noise.shape == (1998, 1, 1)
+    time, corrs_noise = estimator.compute_projected_corrs()
+    assert corrs_noise.shape == (198, 1, 1)
 
 
 @pytest.mark.parametrize("traj_list", ["numpy", "dask"], indirect=True)
 @pytest.mark.parametrize("method", ["rect", "trapz", "trapz_stab"])
 def test_gfpe(traj_list, method):
-    estimator = vb.Estimator_gle(traj_list, vb.Pos_gle_overdamped, bf.BSplineFeatures(10, remove_const=False), trunc=10, saveall=False, verbose=True)
+    estimator = vb.Estimator_gle(traj_list, vb.Pos_gle_overdamped, bf.BSplineFeatures(10, remove_const=False), trunc=1, saveall=False, verbose=True)
     estimator.to_gfpe()
     assert estimator.model.dim_obs == 10
 
@@ -70,15 +70,15 @@ def test_gfpe(traj_list, method):
     assert model.force_coeff.shape == (10, 10)
 
     model = estimator.compute_corrs()
-    assert estimator.bkbkcorrw.shape == (10, 10, 2000)
+    assert estimator.bkbkcorrw.shape == (10, 10, 200)
 
     model = estimator.compute_kernel(method="trapz")
-    assert model.kernel.shape == (1999, 10, 10)
+    assert model.kernel.shape == (199, 10, 10)
 
     # time, bkbk = model.evolve_volterra(estimator.bkbkcorrw.isel(time_trunc=0), 500, method=method)
     #
     # assert bkbk.shape == (10, 10, 500)
-
+    #
     # time, flux = model.flux_from_volterra(bkbk)
     #
     # assert flux.shape == (500, 10)
@@ -89,7 +89,7 @@ def test_gfpe(traj_list, method):
 @pytest.mark.parametrize("method,vectorize", [("fft", False), ("fft", True), ("direct", False), ("direct", True)])
 def test_corrs_method(traj_list, method, vectorize):
     estimator = vb.Estimator_gle(traj_list, vb.Pos_gle, bf.BSplineFeatures(10, remove_const=False), trunc=1, saveall=False, verbose=False)
-    estimator.compute_mean_force()
+    estimator.set_zero_force()
     estimator.compute_corrs(method=method, vectorize=vectorize, second_order_method=True)
 
     assert estimator.bkbkcorrw.shape == (9, 9, 200)

@@ -135,9 +135,6 @@ class ModelBase(object):
         """
         raise NotImplementedError
 
-    def set_zero_force(self):  # TODO
-        self.force_coeff = np.zeros((self.N_basis_elt_force, self.dim_obs))
-
     def compute_noise(self, xva, trunc_kernel=None, start_point=0, end_point=None):
         """
         From a trajectory get the noise.
@@ -529,7 +526,7 @@ class Pos_gle_with_friction(Pos_gle):
         if coeffs is None:
             if self.force_coeff is None:
                 raise Exception("Mean force has not been computed.")
-            coeffs = self.force_coeff[self.N_basis_elt :]
+            coeffs = self.force_coeff[: self.N_basis_elt, :]
         else:  # Check shape
             if coeffs.shape != (self.N_basis_elt, self.dim_obs):
                 warnings.warn("Wrong shape of the coefficients. Get {} but expect {}.".format(coeffs.shape, (self.N_basis_elt_force, self.dim_obs)))
@@ -740,10 +737,8 @@ class Pos_gle_overdamped(ModelBase):
         G0 = np.asarray(G0)
         coeffs_force = self.force_coeff.to_numpy()
         coeffs_ker = self.kernel.to_numpy()[:trunc_ind, :, :]
-        # TODO : A réimplémenter en fortran avec les coeffs en xarray
-        # Modifier le code fortran pour séparer l'évolution en temps du calcul de la dérivée ce qui sera plus pratique pour le calcul du flux
         if method == "rect":
-            res = solve_ide_rect(coeffs_ker, G0, coeffs_force, lenTraj, self.dt)  # TODO it might worth transpose all the code for the kernel
+            res = solve_ide_rect(coeffs_ker, G0, coeffs_force, lenTraj, self.dt)
         elif method == "trapz":
             res = solve_ide_trapz(coeffs_ker, G0, coeffs_force, lenTraj, self.dt)
         elif method == "trapz_stab":

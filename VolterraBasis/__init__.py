@@ -176,28 +176,6 @@ def concat_underdamped(xva):
     return xr.Dataset({"x": new_x, "v": new_v}, attrs={"dt": xva.dt})
 
 
-def update_traj_gfpe(xva, model):
-    E_force, E, dE = model.basis_vector(xva)
-    return xva.update({"dE": (["time", "dim_dE"], dE)})
-
-
-def compute_element_location(xva, element_finder):
-    """
-    Get element from trajectory
-    """
-    return xva.update({"elem": (["time"], element_finder.find(xva["x"].data))})
-
-
-def apply_on_all_trajs(xva_list, func, *args, **kwargs):
-    """
-    Loop over all trajectories to apply func
-    TODO: Make a parallelized version of the function
-    """
-    for i in range(len(xva_list)):
-        xva_list[i] = func(xva_list[i], *args, **kwargs)
-    return xva_list
-
-
 def compute_1d_fe(xva_list, bins=150, kT=2.494, hist=False):
     """
     Computes the free energy from the trajectoy using a cubic spline
