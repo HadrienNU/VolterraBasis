@@ -5,12 +5,12 @@ from ._multidim_basis import TensorialBasis2D
 
 try:  # That make depencies on skfem and sparse optionnal
     from ._fem_features import FEMScalarFeatures
-except ImportError:
+except Exception:
     FEMScalarFeatures = None
     pass
 try:
     from ._mesh_utils import *
-except ImportError:
+except Exception:
     pass
 
 
