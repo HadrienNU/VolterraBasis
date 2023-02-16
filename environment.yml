@@ -5,6 +5,8 @@ dependencies:
   - numpy
   - scipy
   - xarray
+  - dask
+  - scikit-learn
   - libgfortran-ng
   - sphinx-gallery
   - numpydoc
