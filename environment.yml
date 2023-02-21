@@ -3,13 +3,9 @@ channels:
   - conda-forge
 dependencies:
   - python=3.8
-  - numpy
-  - scipy
-  - xarray
-  - scikit-learn
-  - scikit-fem
-  - sparse
+  - pip
+  - pip :
+    - -r requirements.txt
   - libgfortran-ng
   - sphinx-gallery
   - numpydoc
-  - joblib
