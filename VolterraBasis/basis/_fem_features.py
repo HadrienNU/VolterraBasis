@@ -113,7 +113,7 @@ class FEMScalarFeatures(TransformerMixin):
         # cells = self.basis_fem.mesh.element_finder(mapping=self.basis_fem.mapping)(*x)
         pts = self.basis_fem.mapping.invF(x[:, :, np.newaxis], tind=cells)
         phis = np.array([self.basis_fem.elem.gbasis(self.basis_fem.mapping, pts, k, tind=cells)[0] for k in range(self.basis_fem.Nbfun)])  # TODO: vérifier la shape
-        return sparse.COO((np.tile(np.arange(nsamples), self.basis_fem.Nbfun), self.basis_fem.element_dofs[:, cells].flatten()), np.ravel(phis), shape=(nsamples, self.n_output_features_))
+        return sparse.COO((np.tile(np.arange(nsamples), self.basis_fem.Nbfun), self.basis_fem.element_dofs[:, cells].flatten()), np.ravel(phis), shape=(nsamples, self.n_output_features_)).todense()  # .todense(): Temporary workaround to the absence if einsum in sparse library
 
     def deriv(self, X, deriv_order=1):
         nsamples, dim = X.shape
@@ -124,15 +124,16 @@ class FEMScalarFeatures(TransformerMixin):
         phis = np.array([self.basis_fem.elem.gbasis(self.basis_fem.mapping, pts, k, tind=cells)[0].grad.transpose([1, 2, 0]) for k in range(self.basis_fem.Nbfun)])  # TODO: vérifier la shape et en extraire les diverses dimensions
         return sparse.COO(
             (np.tile(np.arange(nsamples), dim * self.basis_fem.Nbfun), np.tile(self.basis_fem.element_dofs[:, cells].flatten(), dim), np.repeat(np.arange(dim), nsamples * self.basis_fem.Nbfun)), np.ravel(phis), shape=(nsamples, self.n_output_features_, dim)  # Le dernier array doit être 000011111222
-        )
+        ).todense()  # .todense(): Temporary workaround to the absence if einsum in sparse library
 
     def hessian(self, X):  # Only for Elementglobal
         raise NotImplementedError
 
     def antiderivative(self, X, order=1):
-        nsamples, dim = X.shape
-        features = np.zeros((nsamples, self.n_output_features_))
-        return features
+        raise NotImplementedError
+        # nsamples, dim = X.shape
+        # features = np.zeros((nsamples, self.n_output_features_))
+        # return features
 
 
 if __name__ == "__main__":  # pragma: no cover

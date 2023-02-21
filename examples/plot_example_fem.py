@@ -10,8 +10,7 @@ How to run memory kernel estimation
 """
 
 import numpy as np
-
-# import dask.array as da
+import dask.array as da
 
 #
 import VolterraBasis as vb
@@ -27,7 +26,7 @@ e = skfem.ElementTriP1()  # skfem.ElementTriRT0()  #
 basis_fem = skfem.CellBasis(m, e)
 
 xva_list = []
-# trj = da.from_array(trj)
+# trj = da.from_array(trj, chunks=(100, 2))
 xf = vb.xframe(trj[:, 1:3], trj[:, 0] - trj[0, 0])
 xvaf = vb.compute_va(xf)
 xva_list.append(xvaf)
@@ -40,9 +39,6 @@ model = estimator.compute_mean_force()
 xfa = trj[:10, 1:3]
 
 force = model.force_eval(xfa)
-
-
-pmf = model.pmf_eval(xfa)
 
 #
 # model.inv_mass_eval(xfa)
