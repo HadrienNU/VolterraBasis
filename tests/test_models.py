@@ -170,16 +170,16 @@ def test_fem(model):
     estimator.compute_corrs(second_order_method=False)
     model = estimator.compute_kernel(method="rect")
 
-    time, noise, a, force, mem = model.compute_noise(traj_list[0])
+    time, noise, a, force, mem = model.compute_noise(xvaf)
 
-    assert noise.shape == traj_list[0]["a"].shape
+    assert noise.shape == xvaf["a"].shape
 
     kernel = model.kernel_eval(xfa)
 
     assert kernel.shape == (model.trunc_ind - 1, 1, xfa.shape[0], 2)
 
     coeffs = model.save_model()
-    print(coeffs)
+
     new_model = model.load_model(model.basis, coeffs)
 
     assert (model.force_coeff == new_model.force_coeff).all()

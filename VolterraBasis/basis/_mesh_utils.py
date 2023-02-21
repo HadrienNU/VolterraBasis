@@ -87,14 +87,15 @@ def get_intersect(a1, a2, b1, b2):
     return (x / z, y / z)
 
 
-def remove_one_point(boundary_vertices, ratio_limit=0.01):
+def remove_one_point(boundary_vertices, ratio_limit=0.01, verbose=False):
     """
     Remove one points from the smallest
     """
     length = np.power(boundary_vertices[1:] - boundary_vertices[:-1], 2).sum(axis=1)
     min_arete = np.argmin(length)
     ratio = length[min_arete] / np.sum(length)
-    print(ratio)
+    if verbose:
+        print("Ratio of smallest edge to perimeter", ratio)
     if ratio < ratio_limit:
         pre_a = boundary_vertices[(min_arete - 1) % len(boundary_vertices)]
         pre_b = boundary_vertices[(min_arete) % len(boundary_vertices)]
@@ -108,7 +109,7 @@ def remove_one_point(boundary_vertices, ratio_limit=0.01):
         return boundary_vertices, False
 
 
-def centroid_driven_mesh(data, bins=100, boundary_vertices=None, simplify_hull=0.01):
+def centroid_driven_mesh(data, bins=100, boundary_vertices=None, simplify_hull=0.01, verbose=False):
     """
     Creates a mesh line based on centroids of the data, to get more cell around point with more datas
 
@@ -124,7 +125,7 @@ def centroid_driven_mesh(data, bins=100, boundary_vertices=None, simplify_hull=0
         boundary_vertices = data[hull.vertices]
         stop = simplify_hull > 0.0
         while stop:
-            boundary_vertices, stop = remove_one_point(boundary_vertices)
+            boundary_vertices, stop = remove_one_point(boundary_vertices, ratio_limit=simplify_hull, verbose=verbose)
     vertices = np.concatenate((boundary_vertices, kmeans.cluster_centers_))
     # For ND, do Delaunay triangulation of the space
     tri = Delaunay(vertices)
