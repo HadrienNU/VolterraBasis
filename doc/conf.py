@@ -71,6 +71,7 @@ autoclass_content = "both"
 # autodoc_default_flags = {"members": True, "inherited-members": True}
 autodoc_default_flags = ["members", "inherited-members"]
 # autoapi_dirs = ["../VolterraBasis"]
+autodoc_mock_imports = ["VolterraBasis.fkernel"]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -85,7 +86,7 @@ source_suffix = ".rst"
 # source_encoding = 'utf-8-sig'
 
 # Generate the plots for the gallery
-plot_gallery = True
+plot_gallery = False
 
 # The master toctree document.
 master_doc = "index"
