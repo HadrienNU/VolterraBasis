@@ -7,6 +7,5 @@ dependencies:
   - pip :
     - -r requirements.txt
   - libgfortran-ng
-  - liblapack
   - sphinx-gallery
   - numpydoc
