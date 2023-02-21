@@ -5,6 +5,10 @@ build:
     python: "mambaforge-4.10"
 conda:
   environment: environment.yml
+python:
+  install:
+    - method: pip
+      path: .
 formats:
   - pdf
 sphinx:
