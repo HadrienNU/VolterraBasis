@@ -2,6 +2,7 @@ name: VolterraBasis
 channels:
   - conda-forge
 dependencies:
+  - python=3.8
   - numpy
   - scipy
   - xarray
