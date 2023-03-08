@@ -102,11 +102,11 @@ def compute_a(xvf):
     dt = xvf.attrs["dt"]
 
     ddiffs = diffs.shift({"time": -1}) - diffs
-    xva = xvf[["x", "v"]].assign({"a": ddiffs["x"] / dt ** 2})
+    xva = xvf[["x", "v"]].assign({"a": ddiffs["x"] / dt**2})
     return xva.dropna("time")
 
 
-def compute_va(xf, correct_jumps=False, jump=2 * np.pi, jump_thr=1.75 * np.pi):
+def compute_va(xf, correct_jumps=False, jump=2 * np.pi, jump_thr=1.75 * np.pi, lamb_finite_diff=0.5):
     """
     Computes velocity and acceleration from a dataset with ['t', 'x'] as
     returned by xframe.
@@ -126,10 +126,10 @@ def compute_va(xf, correct_jumps=False, jump=2 * np.pi, jump_thr=1.75 * np.pi):
         # raise NotImplementedError("Periodic data are not implemented yet")
 
     ddiffs = diffs.shift({"time": -1}) - diffs
-    sdiffs = diffs.shift({"time": -1}) + diffs
+    sdiffs = lamb_finite_diff * diffs.shift({"time": -1}) + (1.0 - lamb_finite_diff) * diffs
 
     # xva = pd.DataFrame({"t": xf["t"], "x": xf["x"], "v": sdiffs["x"] / (2.0 * dt), "a": ddiffs["x"] / dt ** 2}, index=xf.index)
-    xva = xf[["x"]].assign({"v": sdiffs["x"] / (2.0 * dt), "a": ddiffs["x"] / dt ** 2})
+    xva = xf[["x"]].assign({"v": sdiffs["x"] / dt, "a": ddiffs["x"] / dt**2})
 
     return xva.dropna("time")
 
@@ -156,7 +156,7 @@ def compute_va_gjf(xf, correct_jumps=False, jump=2 * np.pi, jump_thr=1.75 * np.p
     ddiffs = diffs.shift({"time": -1}) - diffs
 
     # xva = pd.DataFrame({"t": xf["t"], "x": xf["x"], "v": sdiffs["x"] / (2.0 * dt), "a": ddiffs["x"] / dt ** 2}, index=xf.index)
-    xva = xf[["x"]].assign({"v": diffs["x"] / dt, "a": ddiffs["x"] / dt ** 2})
+    xva = xf[["x"]].assign({"v": diffs["x"] / dt, "a": ddiffs["x"] / dt**2})
 
     return xva.dropna("time")
 
