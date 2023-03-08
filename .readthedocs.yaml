@@ -3,8 +3,15 @@ build:
   os: "ubuntu-20.04"
   tools:
     python: "mambaforge-4.10"
+  apt_packages:
+    - gfortran
+    - liblapack-dev
 conda:
   environment: environment.yml
+python:
+  install:
+    - method: pip
+      path: .
 formats:
   - pdf
 sphinx:

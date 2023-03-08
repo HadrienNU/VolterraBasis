@@ -2,13 +2,10 @@ name: VolterraBasis
 channels:
   - conda-forge
 dependencies:
-  - numpy
-  - scipy
-  - xarray
-  - scikit-learn
-  - scikit-fem
-  - sparse
+  - python=3.8
+  - pip
+  - pip :
+    - -r requirements.txt
   - libgfortran-ng
   - sphinx-gallery
   - numpydoc
-  - joblib
