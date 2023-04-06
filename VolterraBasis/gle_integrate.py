@@ -184,33 +184,17 @@ class Integrator_gle(object):
     The Class holding the BGLE integrator.
     """
 
-    def __init__(self, pos_gle, coeffs_noise_kernel=None, trunc_kernel=None, rng=np.random.normal, verbose=True, **kwargs):
+    def __init__(self, gle_model, coeffs_noise_kernel=None, trunc_kernel=None, rng=np.random.normal, verbose=True, **kwargs):
         """
         On prend comme argument, une classe pos_gle qui contient l'estimation de la force et du kernel
         Des coeffs, coeffs_noise_kernel qui sont les coeffs qu'on veut prendre pour la covariance du bruit
         If pos_gle is None, basis,force_coeff, kernel and dt should be passed as argument
         """
         self.verbose = verbose
-
-        if pos_gle is not None:
-            self.basis = pos_gle.basis
-
-            if trunc_kernel is None:
-                trunc_kernel = pos_gle.kernel.shape[0]
-
-            self.force_coeff = pos_gle.force_coeff
-            self.kernel = pos_gle.kernel[:trunc_kernel]
-
-            self.rank_projection = pos_gle.rank_projection
-            self.P_range = pos_gle.P_range
-
-            self.dt = pos_gle.time[1, 0] - pos_gle.time[0, 0]
-
-            self.N_basis_elt_kernel = pos_gle.N_basis_elt_kernel
-            self.dim = pos_gle.dim_obs
-            if coeffs_noise_kernel is None:
-                kernel_gram = pos_gle.compute_kernel_gram()
-                coeffs_noise_kernel = np.linalg.inv(kernel_gram) @ pos_gle.bkbkcorrw[0, :, :]
+        if gle_model is not None:
+            self._copy_from_estimator(gle_model, trunc_kernel)
+            if coeffs_noise_kernel is None:  # Coeffs pour le FDT
+                coeffs_noise_kernel = gle_model.inv_mass_coeff
             kernel_noise = np.einsum("kl,ikd->ild", coeffs_noise_kernel, self.kernel)
         else:
             self.basis = kwargs["basis"]
@@ -239,28 +223,28 @@ class Integrator_gle(object):
 
         self.trunc_kernel = self.kernel.shape[0]
 
-        self.noise_generator = ColoredNoiseGenerator(kernel_noise, pos_gle.time[:, 0], rng=rng)
+        self.noise_generator = ColoredNoiseGenerator(kernel_noise, gle_model.kernel["time_kernel"].to_numpy(), rng=rng)
 
-    def _copy_from_estimator(self, pos_gle, trunc_kernel=None):
+    def _copy_from_estimator(self, gle_model, trunc_kernel=None):
         """
         Copy everything from the estimator
         """
 
-        self.basis = pos_gle.basis
+        self.basis = gle_model.basis
 
         if trunc_kernel is None:
-            trunc_kernel = pos_gle.kernel.shape[0]
+            trunc_kernel = gle_model.trunc_ind
 
-        self.force_coeff = pos_gle.force_coeff
-        self.kernel = pos_gle.kernel[:trunc_kernel]
+        self.force_coeff = gle_model.force_coeff.to_numpy()
+        self.kernel = gle_model.kernel.to_numpy()[:trunc_kernel,]
 
-        self.rank_projection = pos_gle.rank_projection
-        self.P_range = pos_gle.P_range
+        self.rank_projection = gle_model.rank_projection
+        self.P_range = gle_model.P_range
 
-        self.dt = pos_gle.time[1, 0] - pos_gle.time[0, 0]
+        self.dt = gle_model.dt
 
-        self.N_basis_elt_kernel = pos_gle.N_basis_elt_kernel
-        self.dim = pos_gle.dim_obs
+        self.N_basis_elt_kernel = gle_model.N_basis_elt_kernel
+        self.dim = gle_model.dim_obs
 
     def initial_conditions(self, xva_arg, n_mem=0):
         """
@@ -430,7 +414,6 @@ class BGLEIntegrator(Integrator_gle_const_kernel):
         return x + self.dt * (k1x + 2.0 * k2x + 2.0 * k3x + k4x) / 6.0, v + self.dt * (k1v + 2.0 * k2v + 2.0 * k3v + k4v) / 6.0, (k1v + 2.0 * k2v + 2.0 * k3v + k4v) / 6.0
 
     def integrate(self, n_steps, x0=0.0, v0=0.0, set_noise_to_zero=False, _custom_noise_array=None, _predef_x=None, _predef_v=None, _n_0=0):
-
         self.kernel = self.kernel.ravel()
         if set_noise_to_zero:
             noise = np.zeros(n_steps)

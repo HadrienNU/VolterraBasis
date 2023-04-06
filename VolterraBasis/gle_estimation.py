@@ -232,7 +232,7 @@ class Estimator_gle(object):
         Return position-dependent effective inverse mass
         """
         if self.verbose:
-            print("Calculate kernel gram...")
+            print("Calculate effective_mass...")
         pos_inv_mass, avg_gram = self.loop_over_trajs(self._compute_square_vel_pos, self.model)
         self.model.inv_mass_coeff = solve_linear(avg_gram, pos_inv_mass)
         return self.model
@@ -418,8 +418,8 @@ class Estimator_gle(object):
         """
         Do the needed scalar product for one traj
         """
-        E = model.basis_vector(xva, compute_for="force")
-        avg_disp = xr.dot(E, xr.dot(xva["v"], xva["v"].rename({"dim_x": "dim_x'"}))) / weight
+        E = model.basis_vector(xva, compute_for="kernel")
+        avg_disp = xr.dot(E, xva["v"], xva["v"].rename({"dim_x": "dim_x'"})) / weight
         avg_gram = xr.dot(E, E.rename({"dim_basis": "dim_basis'"})) / weight
         return avg_disp, avg_gram
 

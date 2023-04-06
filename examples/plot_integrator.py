@@ -81,58 +81,60 @@ estimator = vb.Estimator_gle(xva_list, vb.Pos_gle_const_kernel, bf.BSplineFeatur
 print("Dimension of observable", estimator.model.dim_x)
 estimator.compute_mean_force()
 estimator.compute_corrs()
+estimator.compute_pos_effective_mass()
 model = estimator.compute_kernel(method="trapz")
 time, kernel = model.kernel["time_kernel"], model.kernel[:, 0, 0]
 force_md = model.force_eval(xf_md)
 
-#
-# integrator = vb.Integrator_gle_const_kernel(model)  # np.ones(Nsplines - 1)
-#
-# xva_new = []
-# corrs_vv_cg = 0.0
-# for n in range(ntrajs):
-#     start = integrator.initial_conditions(xva_list[n])
-#     xva = integrator.run(40000, start)
-#     xva = vb.compute_a(xva)
-#     xva_new.append(xva)
-#     corrs_vv_cg += vb.correlation(xva["v"]) / ntrajs
-#
-# xf_cg, fe_cg, mean_a_cg = compute_1d_fe(xva_new)
-#
-#
-# fig_integration, axs = plt.subplots(2, 2)
-# # New traj plot
-# axs[0, 0].set_title("Traj")
-# axs[0, 0].set_xlabel("$t$")
-# axs[0, 0].set_ylabel("$r(t)$")
-# axs[0, 0].grid()
-# for n in range(ntrajs):
-#     axs[0, 0].plot(xva_new[n]["time"], xva_new[n]["x"], "-")
-#
-# # Density Plot
-# axs[0, 1].set_title("Density")
-# axs[0, 1].set_xlabel("$r$")
-# axs[0, 1].set_ylabel("PMF")
-# axs[0, 1].grid()
-# axs[0, 1].plot(xf_md, fe_md, "-", label="MD")
-# axs[0, 1].plot(xf_cg, fe_cg, "-", label="CG")
-#
-# # Force Plot
-# axs[1, 1].set_title("Force")
-# axs[1, 1].set_xlabel("$r$")
-# axs[1, 1].set_ylabel("f(r)")
-# axs[1, 1].grid()
-# axs[1, 1].plot(xf_md, force_md, "-", label="MD mean force")
-# axs[1, 1].plot(xf_cg, mean_a_cg, "-", label="CG")
-#
-# # Correlation plot
-# axs[1, 0].set_title("Corrs")
-# axs[1, 0].set_xscale("log")
-# axs[1, 0].set_xlabel("$t$")
-# axs[1, 0].set_ylabel("$\\langle v,v \\rangle$")
-# axs[1, 0].grid()
-# axs[1, 0].plot(corrs_vv_md[:1000, 0, 0], "-", label="MD")
-# axs[1, 0].plot(corrs_vv_cg[:1000, 0, 0], "-", label="CG")
-#
+
+integrator = vb.Integrator_gle_const_kernel(model)  # np.ones(Nsplines - 1)
+
+xva_new = []
+corrs_vv_cg = 0.0
+for n in range(ntrajs):
+    start = integrator.initial_conditions(xva_list[n])
+    xva = integrator.run(40000, start)
+    xva = vb.compute_a(xva)
+    xva_new.append(xva)
+    print(xva)
+    corrs_vv_cg += vb.correlation_fft(xva["v"].T) / ntrajs
+
+xf_cg, fe_cg, mean_a_cg = compute_1d_fe(xva_new)
+
+
+fig_integration, axs = plt.subplots(2, 2)
+# New traj plot
+axs[0, 0].set_title("Traj")
+axs[0, 0].set_xlabel("$t$")
+axs[0, 0].set_ylabel("$r(t)$")
+axs[0, 0].grid()
+for n in range(ntrajs):
+    axs[0, 0].plot(xva_new[n]["time"], xva_new[n]["x"], "-")
+
+# Density Plot
+axs[0, 1].set_title("Density")
+axs[0, 1].set_xlabel("$r$")
+axs[0, 1].set_ylabel("PMF")
+axs[0, 1].grid()
+axs[0, 1].plot(xf_md, fe_md, "-", label="MD")
+axs[0, 1].plot(xf_cg, fe_cg, "-", label="CG")
+
+# Force Plot
+axs[1, 1].set_title("Force")
+axs[1, 1].set_xlabel("$r$")
+axs[1, 1].set_ylabel("f(r)")
+axs[1, 1].grid()
+axs[1, 1].plot(xf_md, force_md, "-", label="MD mean force")
+axs[1, 1].plot(xf_cg, mean_a_cg, "-", label="CG")
+
+# Correlation plot
+axs[1, 0].set_title("Corrs")
+axs[1, 0].set_xscale("log")
+axs[1, 0].set_xlabel("$t$")
+axs[1, 0].set_ylabel("$\\langle v,v \\rangle$")
+axs[1, 0].grid()
+axs[1, 0].plot(corrs_vv_md[0, 0, :1000], "-", label="MD")
+axs[1, 0].plot(corrs_vv_cg[0, 0, :1000], "-", label="CG")
+
 
 plt.show()
