@@ -30,7 +30,9 @@ def ldl_hankel(y, n=None, thres=None, N_keep=None):
     if n is None:
         n = (y.shape[0] - 1) // 2
     hankel = scipy.linalg.hankel(y[: n + 1], y[n : 2 * n + 1])
-    u_svd, s_svd, vh_svd = np.linalg.svd(hankel, full_matrices=False, hermitian=True)
+    # print("hankel", hankel.shape)
+    u_svd, s_svd, vh_svd = np.linalg.svd(hankel, full_matrices=False, hermitian=True)  # Il faut remplacer ça par un calcul de Krylov scipy.sparse.linalg.svds
+    # print("Post svd")
     if thres is None:
         thres = s_svd.max() * (n + 1) * np.finfo(s_svd.dtype).eps  # Set thresold from numerical precision
     N_rank = np.count_nonzero(s_svd > thres)
@@ -50,6 +52,7 @@ def ldl_hankel(y, n=None, thres=None, N_keep=None):
     D = np.zeros(N)
     v = np.identity(n + 1)
     curr_i = 0
+    # print("start loop")
     for i in range(0, n + 1):
         # print("----- ", i, curr_i)
         tilteu = v[i, :]
@@ -75,7 +78,9 @@ def get_jacobi_matrix_reduced(y, n=None, thres=None, N_keep=None, debug=False):
     """
     if n is None:  # Then use all data
         n = (y.shape[0] - 1) // 2
+    # print(y.shape, n, thres, N_keep)
     dlu, D, H = ldl_hankel(y, n, thres=thres, N_keep=N_keep)
+    # print("After Hanke", dlu.shape)
     shift = scipy.linalg.toeplitz([(0, 1)[i == 1] for i in range(n + 1)], np.zeros(n + 1))
     J_ldl = dlu @ (H @ shift) @ dlu.T @ D
     if debug:
@@ -164,7 +169,9 @@ def prony_fit_times_serie(data, dt, thres=None, N_keep=None, remove=True):
     debug: bool, default=False
         A flag indicating to output as well the filtered data.
     """
+    # print("Start", data.shape, dt)
     J, _ = get_jacobi_matrix_reduced(data / data[0], thres=thres, N_keep=N_keep)
+    # print("Cleaning")
     A = clean_eigenvalues(J, dt, remove=remove)
     return data[0], A
 

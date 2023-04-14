@@ -44,6 +44,10 @@ def exp_fct(t, a, b):
     return a * np.exp(-b * t)
 
 
+def expnorm_fct(t, b):
+    return np.exp(-b * t)
+
+
 def sech_fct(t, a, b, nu):
     return a / np.cosh(b * t) ** (nu)
 
@@ -57,7 +61,7 @@ def sech_two_fct(t, a, b):
 
 
 def gaussian_fct(t, a, b):
-    return a * np.exp(-b * t ** 2)
+    return a * np.exp(-b * t**2)
 
 
 def memory_fit(times, data, type="exp", **kwargs):
@@ -71,6 +75,9 @@ def memory_fit(times, data, type="exp", **kwargs):
     if type in ["exp", "exponential"]:
         func = exp_fct
         p0 = [data[0], 0.1 / (times[1] - times[0])]
+    elif type in ["expnorm", "exp_norm"]:
+        func = expnorm_fct
+        p0 = [0.1 / (times[1] - times[0])]
     elif type in ["sech"]:
         func = sech_fct
         p0 = [data[0], 0.1 / np.sqrt((times[1] - times[0])), 1.5]
@@ -101,6 +108,8 @@ def memory_fit_eval(times, params, type=None):
         popt = params
     if type in ["exp", "exponential"]:
         func = exp_fct
+    elif type in ["expnorm", "exp_norm"]:
+        func = expnorm_fct
     elif type in ["sech"]:
         func = sech_fct
     elif type in ["sech_one"]:
