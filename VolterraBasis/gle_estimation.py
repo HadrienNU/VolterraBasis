@@ -301,7 +301,8 @@ class Estimator_gle(object):
         """
         if self.bkbkcorrw is None or self.bkdxcorrw is None:
             raise Exception("Need correlation functions to compute the kernel.")
-        print("Compute memory kernel using {} method".format(method))
+        if self.verbose:
+            print("Compute memory kernel using {} method".format(method))
         time = np.arange(self.model.trunc_ind) * self.dt
         time_ker = time - time[0]  # Set zero time
         self.model.method = method  # Save used method
