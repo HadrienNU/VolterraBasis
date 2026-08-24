@@ -16,6 +16,7 @@ incdir_f2py = run_command(py,
 ).stdout().strip()
 
 inc_np = include_directories(incdir_numpy, incdir_f2py)
+fortranobject_c = incdir_f2py / 'fortranobject.c'
 
 # 2. Tell Meson to run F2PY on your Fortran file(s)
 # Replace 'your_fortran_file.f90' and 'your_module_name' with your actual files
@@ -36,6 +37,7 @@ lapack_dep = dependency('lapack')
 py.extension_module('fkernel',
   'VolterraBasis/fkernel.f90', # The original fortran file
   f2py_target,                 # The generated C wrappers
+  fortranobject_c,  	       # The NumPy/Fortran bridge C file
   include_directories: inc_np,
   dependencies: [py_dep, lapack_dep],
   install: true,

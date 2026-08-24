@@ -8,7 +8,7 @@ keywords = [
 authors = [
     {name = 'Hadrien Vroylandt'},
 ]
-requires-python = ">= 3.7"
+requires-python = ">= 3.8"
 dependencies = [
     'numpy>=1.15',
     'scipy>=1.6.0',
