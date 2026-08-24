@@ -16,21 +16,23 @@ inc_np = include_directories(incdir_numpy)
 # Replace 'your_fortran_file.f90' and 'your_module_name' with your actual files
 f2py_target = custom_target('f2py_wrapper',
   input: ['VolterraBasis/fkernel.f90'], # Your Fortran source
-  output: ['fkernelmodule.c', 'fkernel-f2pywrappers.f'],
+  output: ['fkernelmodule.c', 'fkernel-f2pywrappers2.f90'],
   command: [
     py, '-m', 'numpy.f2py', 
     '@INPUT@', 
     '-m', 'fkernel', 
-    '-l lapack' # Add any f2py flags you used previously here
+    '--lower' 
   ]
 )
+
+lapack_dep = dependency('lapack')
 
 # 3. Compile the Extension Module
 py.extension_module('fkernel',
   'VolterraBasis/fkernel.f90', # The original fortran file
   f2py_target,                 # The generated C wrappers
   include_directories: inc_np,
-  dependencies: py_dep,
+  dependencies: [py_dep, lapack_dep],
   install: true,
   subdir: 'VolterraBasis'      # Installs it inside your python package folder
 )
