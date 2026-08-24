@@ -10,7 +10,12 @@ incdir_numpy = run_command(py,
   check: true
 ).stdout().strip()
 
-inc_np = include_directories(incdir_numpy)
+incdir_f2py = run_command(py,
+  ['-c', 'import numpy.f2py; print(numpy.f2py.get_include())'],
+  check: true
+).stdout().strip()
+
+inc_np = include_directories(incdir_numpy, incdir_f2py)
 
 # 2. Tell Meson to run F2PY on your Fortran file(s)
 # Replace 'your_fortran_file.f90' and 'your_module_name' with your actual files
