@@ -1,4 +1,4 @@
-project('VolterraBasis', 'c', 'fortran', version: '0.1.0')
+project('VolterraBasis', 'c', 'fortran', version: '3.0')
 
 # 1. Find Python and NumPy
 py_mod = import('python')
@@ -47,4 +47,9 @@ py.install_sources(
   'VolterraBasis/__init__.py',
   # add your other .py files here
   subdir: 'VolterraBasis'
+)
+
+install_subdir(
+  'VolterraBasis', 
+  install_dir: py.get_install_dir()
 )
