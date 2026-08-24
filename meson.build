@@ -21,7 +21,7 @@ f2py_target = custom_target('f2py_wrapper',
     py, '-m', 'numpy.f2py', 
     '@INPUT@', 
     '-m', 'fkernel', 
-    '-llapack' # Add any f2py flags you used previously here
+    '-l lapack' # Add any f2py flags you used previously here
   ]
 )
 
