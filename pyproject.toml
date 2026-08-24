@@ -1,0 +1,70 @@
+[project]
+name = "VolterraBasis"
+readme = "README.md"
+description = "Python module for the extraction of position dependant memory kernels from time series"
+keywords = [
+    "langevin-equations", "time-series-analysis"
+]
+authors = [
+    {name = 'Hadrien Vroylandt'},
+]
+requires-python = ">= 3.7"
+dependencies = [
+    'numpy>=1.15',
+    'scipy>=1.6.0',
+    'scikit-learn>=0.22',
+    'xarray>=0.20',
+    'joblib>=0.14.0',
+    'scikit-fem>= 2.0.0',
+    'sparse >=0.13'
+    
+]
+dynamic = ['version']
+
+classifiers = ["Intended Audience :: Science/Research", "License :: OSI Approved", "Programming Language :: Python", "Topic :: Scientific/Engineering", "Operating System :: Microsoft :: Windows", "Operating System :: POSIX", "Operating System :: Unix", "Operating System :: MacOS"]
+
+
+[project.urls]
+homepage = "https://github.com/HadrienNU/VolterraBasis"
+repository = "https://github.com/HadrienNU/VolterraBasis"
+documentation = "https://github.com/HadrienNU/VolterraBasis"
+download = "https://github.com/HadrienNU/VolterraBasis"
+
+[project.optional-dependencies]
+deep-learning = ['torch']
+plotting = ['matplotlib']
+units = ['pint>=0.20']
+tests = [
+    'pytest==7.1.2',
+    'pytest-cov==4.0.0',
+    "dask>=2022.2.0",
+    "torch>=1.12.0",
+    'pytest-benchmark>=4.0.0',
+]
+docs = ["sphinx", "sphinx-gallery", "sphinx_rtd_theme", "numpydoc", "matplotlib"]
+
+
+[build-system]
+# numpy>=2.0 is required for Meson's dependency('numpy') support
+requires = ["meson-python>=0.15.0", "numpy>=2.0.0"]
+build-backend = "mesonpy"
+
+
+
+
+
+[tool.pytest.ini_options]
+filterwarnings = ["once", "ignore::UserWarning"]
+
+[tool.flake8]
+ignore = ['E24', 'E121', 'E123', 'E126', 'E226', 'E704', 'W503', 'W504']
+max-line-length = 120
+
+[tool.coverage.report]
+exclude_lines = ["@plotting_function", "pragma: no cover"]
+omit = ["*/**/setup.py", "tests/*", "VolterraBasis/_version.py"]
+
+
+[tool.cibuildwheel]
+build-verbosity = 1
+
