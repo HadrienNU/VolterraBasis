@@ -46,7 +46,7 @@ docs = ["sphinx", "sphinx-gallery", "sphinx_rtd_theme", "numpydoc", "matplotlib"
 
 [build-system]
 # numpy>=2.0 is required for Meson's dependency('numpy') support
-requires = ["meson-python>=0.15.0", "numpy>=2.0.0"]
+requires = ["meson-python>=0.15.0", "numpy>=2.0.0", "ninja"]
 build-backend = "mesonpy"
 
 
